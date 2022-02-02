@@ -1,0 +1,63 @@
+name:                dhall-secret
+version:             0.1.0.0
+github:              "githubuser/dhall-secret"
+license:             BSD3
+author:              "Author name here"
+maintainer:          "example@example.com"
+copyright:           "2022 Author name here"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/dhall-secret#readme>
+
+dependencies:
+- amazonka
+- amazonka-kms
+- base >= 4.7 && < 5
+- bytestring
+- dhall
+- lens
+- memory
+- text
+
+library:
+  source-dirs: src
+  default-extensions:
+    # Level 1
+    - QuasiQuotes
+    - TemplateHaskell
+    # Level 0
+    - NamedFieldPuns
+    - OverloadedStrings
+executables:
+  dhall-secret:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - dhall-secret
+    - optparse-applicative
+
+tests:
+  dhall-secret-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - dhall-secret
+    - HUnit
