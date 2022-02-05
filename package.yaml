@@ -27,6 +27,7 @@ dependencies:
 - dhall
 - lens
 - memory
+- unordered-containers
 - text
 
 library:
