@@ -8,5 +8,5 @@ import           System.IO    (stdout)
 
 awsRun cmd = do
   env <- newEnv Discover
-  logger <- newLogger Debug stdout
+  logger <- newLogger Info stdout
   runResourceT $ runAWS (env & envLogger .~ logger) cmd

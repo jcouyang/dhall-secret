@@ -1,6 +1,7 @@
 module Lib
     ( encrypt
     , decrypt
+    , secretType
     ) where
 
 import qualified Aes
@@ -58,7 +59,7 @@ encrypt :: Expr Src Void -> IO (Expr Src Void)
 encrypt input = do
   subExpressions toEncrypted input
   where
-    toEncrypted (App (Field u (FieldSelection _ t _)) (RecordLit m))
+    toEncrypted (App (Field u (FieldSelection src t _)) (RecordLit m))
       | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
           (Just (RecordField  _ (TextLit (Chunks _ kid)) _ _),
            Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
@@ -86,7 +87,7 @@ encrypt input = do
                  [ ("KeyEnvName", ken)
                  , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted))))
                  , ("IV", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 initIV))))])
-          _ -> error "AES encrypt wrong"
+          _ -> error "Internal Error when encrypting Aes256Decrypted expr"
     toEncrypted expr = subExpressions toEncrypted expr
 
 decrypt :: Expr Src Void -> IO (Expr Src Void)

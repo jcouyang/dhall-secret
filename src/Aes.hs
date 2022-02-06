@@ -5,7 +5,7 @@
 module Aes where
 import           Crypto.Cipher.AES       (AES256)
 import           Crypto.Cipher.Types     (BlockCipher (..), Cipher (..), IV,
-                                          KeySizeSpecifier (..), makeIV, nullIV)
+                                          KeySizeSpecifier (..), makeIV)
 import           Crypto.Error            (CryptoError (..), CryptoFailable (..))
 
 import qualified Crypto.Random.Types     as CRT
@@ -40,10 +40,6 @@ mkIV _ bs64 = do
       _       -> error "gen iv failed"
     _ -> error "gen iv failed"
 
--- | Initialize a block cipher
-
-hush :: Either String bout0 -> Maybe b0
-hush = error "not implemented"
 initCipher :: (BlockCipher c, ByteArray a) => Key c a -> Either CryptoError c
 initCipher (Key k) = case cipherInit k of
   CryptoFailed e -> Left e

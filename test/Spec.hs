@@ -7,12 +7,14 @@ import qualified Lib
 import           Test.HUnit
 
 tests = test
-  [--"encrypt decrypt with kms" ~: snapshot "./test/example01.dhall" "./test/example01.expected.dhall",
+  [ "encrypt decrypt with KMS" ~: snapshot "./test/example01.dhall" "./test/example01.expected.dhall",
     "encrypt decrypt with AES" ~: snapshot "./test/example02.dhall" "./test/example02.expected.dhall"
   ]
 
 main :: IO ()
-main = runTestTTAndExit tests
+main = do
+  TIO.writeFile "./Type.dhall" (pretty Lib.secretType)
+  runTestTTAndExit tests
 
 
 snapshot src expect = do

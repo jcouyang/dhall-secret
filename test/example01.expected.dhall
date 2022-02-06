@@ -1,7 +1,10 @@
 { foo =
   { aws =
     { noContext =
-        < AwsKmsDecrypted :
+        < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+        | Aes256Encrypted :
+            { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+        | AwsKmsDecrypted :
             { EncryptionContext : List { mapKey : Text, mapValue : Text }
             , KeyId : Text
             , PlainText : Text
@@ -18,7 +21,10 @@
           , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
           }
     , withContext =
-        < AwsKmsDecrypted :
+        < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+        | Aes256Encrypted :
+            { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+        | AwsKmsDecrypted :
             { EncryptionContext : List { mapKey : Text, mapValue : Text }
             , KeyId : Text
             , PlainText : Text
