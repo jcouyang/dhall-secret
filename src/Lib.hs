@@ -3,11 +3,15 @@ module Lib
     , decrypt
     ) where
 
+import qualified Aes
 import           Aws                     (awsRun)
 import           Control.Exception       (throw)
 import           Control.Lens
+import           Crypto.Cipher.AES       (AES256)
+import           Data.ByteArray          (ByteArray)
 import           Data.ByteArray.Encoding (Base (Base64), convertFromBase,
                                           convertToBase)
+import           Data.ByteString         (ByteString)
 import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
@@ -31,9 +35,13 @@ import           Network.AWS.KMS         (decEncryptionContext,
 import qualified Network.AWS.KMS         as KMS
 import           Network.AWS.KMS.Decrypt (drsKeyId, drsPlaintext)
 import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
+import           System.Environment      (getEnv)
+
 secretType :: Expr Src Void
 secretType = [dhall|
-< AwsKmsDecrypted :
+< Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+| Aes256Encrypted : { CiphertextBlob : Text, KeyEnvName : Text }
+| AwsKmsDecrypted :
     { EncryptionContext : List { mapKey : Text, mapValue : Text }
     , KeyId : Text
     , PlainText : Text
@@ -65,6 +73,18 @@ encrypt input = do
                  , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 cb))))
                  , ("EncryptionContext", ec)])
               _ -> error (show eResp)
+          _ -> error "AwsKmsDecrypted wrong"
+      | u == secretType && t == "Aes256Decrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "PlainText" m) of
+          (Just ken@(RecordField  _ (TextLit (Chunks _ keyEnv)) _ _),
+           Just (RecordField _ (TextLit (Chunks _ pt)) _ _)) -> do
+            secret <- getEnv (T.unpack keyEnv)
+            initIV <- Aes.genRandomIV (undefined :: AES256)
+            encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined::AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
+            pure $ App
+                (Field u (makeFieldSelection "AesEncrypted"))
+                (RecordLit $ DM.fromList
+                 [ ("KeyEnvName", ken)
+                 , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted))))])
           _ -> error "AwsKmsDecrypted wrong"
     toEncrypted expr = subExpressions toEncrypted expr
 
