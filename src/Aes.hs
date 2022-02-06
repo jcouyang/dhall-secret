@@ -3,16 +3,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Aes where
-import           Crypto.Cipher.AES   (AES256)
-import           Crypto.Cipher.Types (BlockCipher (..), Cipher (..), IV,
-                                      KeySizeSpecifier (..), makeIV, nullIV)
-import           Crypto.Error        (CryptoError (..), CryptoFailable (..))
+import           Crypto.Cipher.AES       (AES256)
+import           Crypto.Cipher.Types     (BlockCipher (..), Cipher (..), IV,
+                                          KeySizeSpecifier (..), makeIV, nullIV)
+import           Crypto.Error            (CryptoError (..), CryptoFailable (..))
 
-import qualified Crypto.Random.Types as CRT
+import qualified Crypto.Random.Types     as CRT
 
-import           Crypto.Hash         (SHA256 (SHA256), hashWith)
-import           Data.ByteArray      (ByteArray, ByteArrayAccess, convert)
-import           Data.ByteString     (ByteString)
+import           Crypto.Hash             (SHA256 (SHA256), hashWith)
+import           Data.ByteArray          (ByteArray, ByteArrayAccess, convert)
+import           Data.ByteArray.Encoding (Base (Base64), convertFromBase)
+import           Data.ByteString         (ByteString)
+import           Data.Text               (Text)
+import qualified Data.Text.Encoding      as T
 
 data Key c a where
   Key :: (BlockCipher c, ByteArrayAccess a) => a -> Key c a
@@ -29,7 +32,18 @@ genRandomIV _ = do
     Just iv -> iv
     _       -> error "gen iv failed"
 
+mkIV :: (Monad m, BlockCipher c) => c -> Text -> m (IV c)
+mkIV _ bs64 = do
+  case convertFromBase Base64 (T.encodeUtf8 bs64) of
+    Right (bs :: ByteString) -> case makeIV bs of
+      Just iv -> pure iv
+      _       -> error "gen iv failed"
+    _ -> error "gen iv failed"
+
 -- | Initialize a block cipher
+
+hush :: Either String bout0 -> Maybe b0
+hush = error "not implemented"
 initCipher :: (BlockCipher c, ByteArray a) => Key c a -> Either CryptoError c
 initCipher (Key k) = case cipherInit k of
   CryptoFailed e -> Left e

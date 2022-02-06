@@ -40,7 +40,7 @@ import           System.Environment      (getEnv)
 secretType :: Expr Src Void
 secretType = [dhall|
 < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-| Aes256Encrypted : { CiphertextBlob : Text, KeyEnvName : Text }
+| Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
 | AwsKmsDecrypted :
     { EncryptionContext : List { mapKey : Text, mapValue : Text }
     , KeyId : Text
@@ -81,11 +81,12 @@ encrypt input = do
             initIV <- Aes.genRandomIV (undefined :: AES256)
             encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined::AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
             pure $ App
-                (Field u (makeFieldSelection "AesEncrypted"))
+                (Field u (makeFieldSelection "Aes256Encrypted"))
                 (RecordLit $ DM.fromList
                  [ ("KeyEnvName", ken)
-                 , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted))))])
-          _ -> error "AwsKmsDecrypted wrong"
+                 , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted))))
+                 , ("IV", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 initIV))))])
+          _ -> error "AES encrypt wrong"
     toEncrypted expr = subExpressions toEncrypted expr
 
 decrypt :: Expr Src Void -> IO (Expr Src Void)
@@ -107,6 +108,21 @@ decrypt input = do
                  , ("EncryptionContext", ec)])
               _ -> error (show eResp)
           _ -> error "AwsKmsDecrypted wrong"
+      | u == secretType && t == "Aes256Encrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "CiphertextBlob" m, DM.lookup "IV" m) of
+          (Just ken@(RecordField  _ (TextLit (Chunks _ keyEnv)) _ _),
+           Just (RecordField _ (TextLit (Chunks _ cb)) _ _),
+           Just (RecordField _ (TextLit (Chunks _ iv)) _ _)) -> do
+            secret <- getEnv (T.unpack keyEnv)
+            initIV <- Aes.mkIV (undefined :: AES256) iv
+            decrypted <- case convertFromBase Base64 (T.encodeUtf8 cb) of
+              Left e  -> error (show e)
+              Right cbb -> Aes.decrypt (Aes.mkSecretKey (undefined::AES256) (T.encodeUtf8 $ T.pack secret)) initIV cbb
+            pure $ App
+                (Field u (makeFieldSelection "Aes256Decrypted"))
+                (RecordLit $ DM.fromList
+                 [ ("KeyEnvName", ken)
+                 , ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))])
+          _ -> error "AES decrypt wrong"
     toDecrypt expr = subExpressions toDecrypt expr
 
 dhallMapToHashMap :: Expr Src Void -> HashMap T.Text T.Text

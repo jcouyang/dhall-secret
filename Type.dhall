@@ -9,5 +9,5 @@ in  < AwsKmsDecrypted :
         , EncryptionContext : Map Text Text
         }
     | Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { KeyEnvName : Text, CiphertextBlob : Text }
+    | Aes256Encrypted : { KeyEnvName : Text, CiphertextBlob : Text, IV : Text }
     >
