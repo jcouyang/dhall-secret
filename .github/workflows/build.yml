@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - runner: "macOS-latest"
+          - runner: "macos-10.15"
             build-script: "nix-build -A dhall-secret"
           - runner: "ubuntu-latest"
             build-script: "nix-build binary.nix"
@@ -51,5 +51,5 @@ jobs:
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION...
         mv ubuntu-latest-binary/bin/dhall-secret dhall-secret-x86_64-linux
-        mv macOS-latest-binary/bin/dhall-secret dhall-secret-x86_64-macOS
+        mv macos-10.15-binary/bin/dhall-secret dhall-secret-x86_64-macOS
         gh release create "$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
