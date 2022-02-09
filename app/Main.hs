@@ -49,7 +49,7 @@ decryptOpt = DecryptOpts
 
 encryptCmdParser = hsubparser $ command "encrypt" (info encryptOpt (progDesc "encrypt dhall file")) <> metavar "encrypt"
 
-decryptCmdParser = hsubparser $ command "decrypt" (info decryptOpt (progDesc "encrypt dhall file")) <> metavar "decrypt"
+decryptCmdParser = hsubparser $ command "decrypt" (info decryptOpt (progDesc "decrypt dhall file")) <> metavar "decrypt"
 
 commands = Encrypt <$> encryptCmdParser <|> Decrypt <$>decryptCmdParser
 

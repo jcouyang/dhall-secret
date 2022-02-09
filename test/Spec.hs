@@ -1,20 +1,23 @@
 module Main where
 import           Data.Text
-import qualified Data.Text.IO as TIO
+import qualified Data.Text.IO             as TIO
 import           Dhall
-import           Dhall.Core   (pretty)
+import           Dhall.Core               (pretty)
 import qualified Lib
+import           System.Environment.Blank (getEnv)
 import           Test.HUnit
 
-tests = test
-  [ "encrypt decrypt with KMS" ~: snapshot "./test/example01.dhall" "./test/example01.expected.dhall",
-    "encrypt decrypt with AES" ~: snapshot "./test/example02.dhall" "./test/example02.expected.dhall"
-  ]
+testKms = "encrypt decrypt with KMS" ~: snapshot "./test/example01.dhall" "./test/example01.expected.dhall"
+testAes = "encrypt decrypt with AES" ~: snapshot "./test/example02.dhall" "./test/example02.expected.dhall"
 
 main :: IO ()
 main = do
+  alg <- getEnv "TEST_ALG"
   TIO.writeFile "./Type.dhall" (pretty Lib.secretType)
-  runTestTTAndExit tests
+  case alg of
+    Just "KMS" ->  runTestTTAndExit (test testKms)
+    Just "ALL" -> runTestTTAndExit (test [testKms, testAes])
+    _          -> runTestTTAndExit (test [testAes])
 
 
 snapshot src expect = do

@@ -5,6 +5,7 @@ haskell.lib.buildStackProject {
   src = ./.;
   shellHook = ''
   export AWS_REGION=ap-southeast-2
+  export MY_AES_SECRET=super-secure-secret
   '';
   buildInputs = [
     stack
