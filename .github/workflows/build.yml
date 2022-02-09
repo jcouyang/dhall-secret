@@ -50,6 +50,6 @@ jobs:
         ls -R
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION...
-        mv ubuntu-latest-binary/bin/dhall-secret dhall-secret-x86_64-linux
-        mv macos-10.15-binary/bin/dhall-secret dhall-secret-x86_64-macOS
+        mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
+        mv macos-10.15-binary/dhall-secret dhall-secret-x86_64-macOS
         gh release create "$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
