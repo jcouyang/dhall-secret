@@ -7,7 +7,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - runner: "macOS-latest"
+            build-script: "nix-build -A dhall-secret"
+          - runner: "ubuntu-latest"
+            build-script: "nix-build binary.nix"
+    name: build on ${{ matrix.os.runner }}
+    runs-on: ${{ matrix.os.runner }}
     if: "!contains(github.event.head_commit.message, 'ci skip')"
     steps:
     - uses: actions/checkout@v2
@@ -19,9 +27,29 @@ jobs:
         name: jcouyang
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Static Binary
-      run: |
-        nix-build binary.nix
+      run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v2
       with:
-        name: static-binary
+        name: ${{matrix.os.runner}}-binary
         path: ./result/bin/dhall-secret
+  publish:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'publish skip') && (github.ref == 'refs/heads/master')"
+    needs:
+      - build
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v2
+    - uses: dhall-lang/setup-dhall@v4
+    - uses: actions/download-artifact@v2
+    - name: tag release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ls -R
+        VERSION=$(dhall text < ./version.dhall)
+        echo publishing $VERSION...
+        mv ubuntu-latest-binary/bin/dhall-secret dhall-secret-x86_64-linux
+        mv macOS-latest-binary/bin/dhall-secret dhall-secret-x86_64-macOS
+        gh release create "$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
