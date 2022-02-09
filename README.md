@@ -1,9 +1,12 @@
 # dhall-secret
+[![Build and Test](https://github.com/jcouyang/dhall-secret/actions/workflows/build.yml/badge.svg)](https://github.com/jcouyang/dhall-secret/actions/workflows/build.yml)
 
 A simple tool to manage secrets in Dhall configuration, inspired by [sops](https://github.com/mozilla/sops)
 
 ## Install
-download binary according to your OS from release channel, or if you have nix
+
+Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases), or if you have nix
+
 ```
 nix-env f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dhall-secret
 ```
@@ -11,16 +14,43 @@ nix-env f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dha
 ## Usage
 
 ```
-dhall-secret --help
-
-Usage: dhall-secret (encrypt | decrypt)
+Usage: dhall-secret (encrypt | decrypt | gen-types) [-v|--version]
 
 Available options:
 -h,--help                Show this help text
+-v,--version             print version
 
 Available commands:
-encrypt                  encrypt dhall file
-decrypt                  decrypt dhall file
+encrypt                  Encrypt a Dhall expression
+decrypt                  Decrypt a Dhall expression
+gen-types                generate types
+```
+### Create the unencrypted expression
+assuming you have a Dhall file `./test/example01.dhall`
+```dhall
+let T = https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.0+4/Type.dhall
+
+let empty =
+      https://raw.githubusercontent.com/dhall-lang/dhall-lang/v22.0.0/Prelude/Map/empty.dhall
+
+in  { foo =
+      { aws =
+        { noContext =
+            T.AwsKmsDecrypted
+              { KeyId = "alias/dhall-secret/test"
+              , PlainText = "hello kms"
+              , EncryptionContext = empty Text Text
+              }
+        , withContext =
+            T.AwsKmsDecrypted
+              { KeyId = "alias/dhall-secret/test"
+              , PlainText = "hello kms with context"
+              , EncryptionContext = toMap { crew = "bar", environment = "prod" }
+              }
+        }
+      , plain = "hello world"
+      }
+    }
 ```
 
 ### AWS KMS
@@ -58,4 +88,9 @@ just export the secret string in environment variable that matching the name in 
 ```
 export MY_AES_SECRET=super-secure-secret
 dhall-secret encrypt -f test/example02.dhall
+```
+
+### Re-encrypt
+```
+dhall-secret decrypt -f test/examples01.encrypted.dhall | dhall-secret encrypt --in-place
 ```
