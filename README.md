@@ -30,7 +30,7 @@ gen-types                generate types
 create a unencrypted version of Dhall file `./test/example.dhall`, put the plain text secret in `PlainText`
 ```dhall
 let dhall-secret =
-      https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.0+6/Type.dhall
+      https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.8/Type.dhall
 
 let empty =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v22.0.0/Prelude/Map/empty.dhall
