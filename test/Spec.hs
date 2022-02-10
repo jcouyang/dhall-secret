@@ -4,6 +4,7 @@ import qualified Data.Text.IO             as TIO
 import           Dhall
 import           Dhall.Core               (pretty)
 import qualified Lib
+import           System.Environment       (setEnv)
 import           System.Environment.Blank (getEnv)
 import           Test.HUnit
 
@@ -13,6 +14,7 @@ testAes = "encrypt decrypt with AES" ~: snapshot "./test/example02.dhall" "./tes
 main :: IO ()
 main = do
   alg <- getEnv "TEST_ALG"
+  setEnv "MY_AES_SECRET" "super-secret"
   TIO.writeFile "./Type.dhall" (pretty Lib.secretType)
   case alg of
     Just "KMS" ->  runTestTTAndExit (test testKms)

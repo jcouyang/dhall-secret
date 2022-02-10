@@ -28,6 +28,8 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Static Binary
       run: ${{matrix.os.build-script}}
+    - name: Verify
+      run: stack test --no-nix-pure
     - uses: actions/upload-artifact@v2
       with:
         name: ${{matrix.os.runner}}-binary

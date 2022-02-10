@@ -1,8 +1,9 @@
 module Lib
-    ( encrypt
-    , decrypt
-    , secretType
-    ) where
+  ( encrypt,
+    decrypt,
+    secretType,
+  )
+where
 
 import qualified Aes
 import           Aws                     (awsRun)
@@ -39,7 +40,8 @@ import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
 import           System.Environment      (getEnv)
 
 secretType :: Expr Src Void
-secretType = [dhall|
+secretType =
+  [dhall|
 < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
 | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
 | AwsKmsDecrypted :
@@ -56,75 +58,90 @@ secretType = [dhall|
 |]
 
 encrypt :: Expr Src Void -> IO (Expr Src Void)
-encrypt input = do
-  subExpressions toEncrypted input
-  where
-    toEncrypted (App (Field u (FieldSelection src t _)) (RecordLit m))
-      | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
-          (Just (RecordField  _ (TextLit (Chunks _ kid)) _ _),
-           Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
-           Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
-            let context = mconcat $ toList (dhallMapToHashMap <$> ecl)
-            eResp <- awsRun $ send $ KMS.encrypt kid (T.encodeUtf8 pt) & eEncryptionContext .~ context
-            case (eResp ^. ersKeyId, eResp ^. ersCiphertextBlob) of
-              (Just kid, Just cb) -> pure $ App
+encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
+  | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
+    ( Just (RecordField _ (TextLit (Chunks _ kid)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
+      Just ec@(RecordField _ (ListLit _ ecl) _ _)
+      ) -> do
+        let context = mconcat $ toList (dhallMapToHashMap <$> ecl)
+        eResp <- awsRun $ send $ KMS.encrypt kid (T.encodeUtf8 pt) & eEncryptionContext .~ context
+        case (eResp ^. ersKeyId, eResp ^. ersCiphertextBlob) of
+          (Just kid, Just cb) ->
+            pure $
+              App
                 (Field u (makeFieldSelection "AwsKmsEncrypted"))
-                (RecordLit $ DM.fromList
-                 [ ("KeyId", makeRecordField (TextLit (Chunks [] kid)) )
-                 , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 cb))))
-                 , ("EncryptionContext", ec)])
-              _ -> error (show eResp)
-          _ -> error "AwsKmsDecrypted wrong"
-      | u == secretType && t == "Aes256Decrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "PlainText" m) of
-          (Just ken@(RecordField  _ (TextLit (Chunks _ keyEnv)) _ _),
-           Just (RecordField _ (TextLit (Chunks _ pt)) _ _)) -> do
-            secret <- getEnv (T.unpack keyEnv)
-            initIV <- Aes.genRandomIV (undefined :: AES256)
-            encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined::AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
-            pure $ App
-                (Field u (makeFieldSelection "Aes256Encrypted"))
-                (RecordLit $ DM.fromList
-                 [ ("KeyEnvName", ken)
-                 , ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted))))
-                 , ("IV", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 initIV))))])
-          _ -> error "Internal Error when encrypting Aes256Decrypted expr"
-    toEncrypted expr = subExpressions toEncrypted expr
+                ( RecordLit $
+                    DM.fromList
+                      [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
+                        ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 cb)))),
+                        ("EncryptionContext", ec)
+                      ]
+                )
+          _ -> error (show eResp)
+    _ -> error "AwsKmsDecrypted wrong"
+  | u == secretType && t == "Aes256Decrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "PlainText" m) of
+    ( Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ pt)) _ _)
+      ) -> do
+        secret <- getEnv (T.unpack keyEnv)
+        initIV <- Aes.genRandomIV (undefined :: AES256)
+        encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
+        pure $
+          App
+            (Field u (makeFieldSelection "Aes256Encrypted"))
+            ( RecordLit $
+                DM.fromList
+                  [ ("KeyEnvName", ken),
+                    ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted)))),
+                    ("IV", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 initIV))))
+                  ]
+            )
+    _ -> error "Internal Error when encrypting Aes256Decrypted expr"
+encrypt expr = subExpressions encrypt expr
 
 decrypt :: Expr Src Void -> IO (Expr Src Void)
-decrypt input = do
-  subExpressions toDecrypt input
-  where
-    toDecrypt (App (Field u (FieldSelection _ t _)) (RecordLit m))
-      | u == secretType && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
-          (Just (RecordField  _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ pt)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
-            eResp <- case convertFromBase Base64 (T.encodeUtf8 pt) of
-              Left e  -> error (show e)
-              Right a -> awsRun $ send $ KMS.decrypt a & decEncryptionContext .~ mconcat (toList (dhallMapToHashMap <$> ecl))
-            case (eResp ^. drsKeyId, eResp ^. drsPlaintext) of
-              (Just kid, Just pt) -> pure $ App
-                (Field u (makeFieldSelection "AwsKmsDecrypted"))
-                (RecordLit $ DM.fromList
-                 [ ("KeyId", makeRecordField (TextLit (Chunks [] kid)) )
-                 , ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 pt))))
-                 , ("EncryptionContext", ec)])
-              _ -> error (show eResp)
-          _ -> error "AwsKmsDecrypted wrong"
-      | u == secretType && t == "Aes256Encrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "CiphertextBlob" m, DM.lookup "IV" m) of
-          (Just ken@(RecordField  _ (TextLit (Chunks _ keyEnv)) _ _),
-           Just (RecordField _ (TextLit (Chunks _ cb)) _ _),
-           Just (RecordField _ (TextLit (Chunks _ iv)) _ _)) -> do
-            secret <- getEnv (T.unpack keyEnv)
-            initIV <- Aes.mkIV (undefined :: AES256) iv
-            decrypted <- case convertFromBase Base64 (T.encodeUtf8 cb) of
-              Left e  -> error (show e)
-              Right cbb -> Aes.decrypt (Aes.mkSecretKey (undefined::AES256) (T.encodeUtf8 $ T.pack secret)) initIV cbb
-            pure $ App
-                (Field u (makeFieldSelection "Aes256Decrypted"))
-                (RecordLit $ DM.fromList
-                 [ ("KeyEnvName", ken)
-                 , ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))])
-          _ -> error "AES decrypt wrong"
-    toDecrypt expr = subExpressions toDecrypt expr
+decrypt (App (Field u (FieldSelection _ t _)) (RecordLit m))
+  | u == secretType && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
+    (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ pt)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
+      eResp <- case convertFromBase Base64 (T.encodeUtf8 pt) of
+        Left e -> error (show e)
+        Right a -> awsRun $ send $ KMS.decrypt a & decEncryptionContext .~ mconcat (toList (dhallMapToHashMap <$> ecl))
+      case (eResp ^. drsKeyId, eResp ^. drsPlaintext) of
+        (Just kid, Just pt) ->
+          pure $
+            App
+              (Field u (makeFieldSelection "AwsKmsDecrypted"))
+              ( RecordLit $
+                  DM.fromList
+                    [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
+                      ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 pt)))),
+                      ("EncryptionContext", ec)
+                    ]
+              )
+        _ -> error (show eResp)
+    _ -> error "AwsKmsDecrypted wrong"
+  | u == secretType && t == "Aes256Encrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "CiphertextBlob" m, DM.lookup "IV" m) of
+    ( Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ cb)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ iv)) _ _)
+      ) -> do
+        secret <- getEnv (T.unpack keyEnv)
+        initIV <- Aes.mkIV (undefined :: AES256) iv
+        decrypted <- case convertFromBase Base64 (T.encodeUtf8 cb) of
+          Left e -> error (show e)
+          Right cbb -> Aes.decrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV cbb
+        pure $
+          App
+            (Field u (makeFieldSelection "Aes256Decrypted"))
+            ( RecordLit $
+                DM.fromList
+                  [ ("KeyEnvName", ken),
+                    ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))
+                  ]
+            )
+    _ -> error "AES decrypt wrong"
+decrypt expr = subExpressions decrypt expr
 
 dhallMapToHashMap :: Expr Src Void -> HashMap T.Text T.Text
 dhallMapToHashMap (RecordLit m) = case (DM.lookup "mapKey" m, DM.lookup "mapValue" m) of

@@ -78,26 +78,24 @@ in  { my-config =
         dhall-secret.Aes256Decrypted
           { KeyEnvName = "MY_AES_SECRET", PlainText = "shhhh" }
     }
-[end file by press Ctrl-D]
-{ my-config =
-    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-    | AwsKmsDecrypted :
-        { EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        , PlainText : Text
-        }
-    | AwsKmsEncrypted :
-        { CiphertextBlob : Text
-        , EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        }
-    >.Aes256Encrypted
-      { KeyEnvName = "MY_AES_SECRET"
-      , CiphertextBlob = "yS5rIJ4="
-      , IV = "UpO48O5L6mGoeXJsuaB89Q=="
-      }
-}
+[Ctrl-D]
+< Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+| Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+| AwsKmsDecrypted :
+    { EncryptionContext : List { mapKey : Text, mapValue : Text }
+    , KeyId : Text
+    , PlainText : Text
+    }
+| AwsKmsEncrypted :
+    { CiphertextBlob : Text
+    , EncryptionContext : List { mapKey : Text, mapValue : Text }
+    , KeyId : Text
+    }
+>.Aes256Encrypted
+  { KeyEnvName = "MY_AES_SECRET"
+  , CiphertextBlob = "Um5EXmk="
+  , IV = "CdbCJEEk2B8/e2YWTNvMtg=="
+  }
 ```
 #### to stdout
 ```
