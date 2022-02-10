@@ -8,7 +8,7 @@ A simple tool to manage secrets in Dhall configuration, inspired by [sops](https
 Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases), or if you have nix
 
 ```
-nix-env f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dhall-secret
+nix-env -f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dhall-secret
 ```
 
 ## Usage
@@ -25,72 +25,186 @@ encrypt                  Encrypt a Dhall expression
 decrypt                  Decrypt a Dhall expression
 gen-types                generate types
 ```
-### Create the unencrypted expression
-assuming you have a Dhall file `./test/example01.dhall`
+
+## Example
+create a unencrypted version of Dhall file `./test/example.dhall`, put the plain text secret in `PlainText`
 ```dhall
-let T = https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.0+4/Type.dhall
+let dhall-secret =
+      https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.0+6/Type.dhall
 
 let empty =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v22.0.0/Prelude/Map/empty.dhall
 
-in  { foo =
-      { aws =
-        { noContext =
-            T.AwsKmsDecrypted
-              { KeyId = "alias/dhall-secret/test"
-              , PlainText = "hello kms"
-              , EncryptionContext = empty Text Text
-              }
-        , withContext =
-            T.AwsKmsDecrypted
-              { KeyId = "alias/dhall-secret/test"
-              , PlainText = "hello kms with context"
-              , EncryptionContext = toMap { crew = "bar", environment = "prod" }
-              }
-        }
-      , plain = "hello world"
-      }
+in  { kmsExample =
+        dhall-secret.AwsKmsDecrypted
+          { KeyId = "alias/dhall-secret/test"
+          , PlainText = "a secret to be encrypted"
+          , EncryptionContext = empty Text Text
+          }
+    , aesExample =
+        dhall-secret.Aes256Decrypted
+          { KeyEnvName = "MY_AES_SECRET"
+          , PlainText = "another secret to be encrypted"
+          }
+    , somethingElse = "not secret"
     }
 ```
 
+The file contains two secrets to be encrypted
+- `a secret to be encrypted` is a secret needs to be encrypted via KMS with key id `alias/dhall-secret/test`
+- `another secret to be encrypted` is a secret needs to be encrypted via AES256, the secret string of AES encryption need to be provide in environment vairable `MY_AES_SECRET`
+
 ### AWS KMS
 
-1. login to your AWS account, either through `~/.aws/credentials` or `AWS_ACCESS_KEY_ID/SECRET` environment
+1. login to your AWS account, either through `~/.aws/credentials` or `AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY` environment
 
-2. update the example file `./test/example01.dhall` with your KMS key id
-
-3. probably need `export AWS_REGION=<your-kms-key-region>` depends whichever authentication method you choosed from step 1
-
-```
-dhall-secret encrypt -f test/example01.dhall
-```
-
-by default it will output to stdout, unless an output filename is provided
-
-```
-dhall-secret encrypt -f test/example01.dhall -o test/example01.encrypted.dhall
-```
-
-or replace the input file inplace
-
-```
-dhall-secret encrypt -f test/example01.dhall
-```
-
-`test/example01.dhall` will be replace with the encrypted and normalized version.
+2. probably need to also `export AWS_REGION=<your-kms-key-region>`
 
 ### AES256
 
-AES256 is much simpler to use comparing with KMS, but you will need to manage your secret string carefully on your own.
-
 just export the secret string in environment variable that matching the name in `KeyEnvName`
-
 ```
 export MY_AES_SECRET=super-secure-secret
-dhall-secret encrypt -f test/example02.dhall
+```
+
+### Encrypt
+#### from stdin
+```
+> dhall-secret encrypt
+let dhall-secret =
+      https://raw.githubusercontent.com/jcouyang/dhall-secret/v0.1.0+6/Type.dhall
+
+in  { my-config =
+        dhall-secret.Aes256Decrypted
+          { KeyEnvName = "MY_AES_SECRET", PlainText = "shhhh" }
+    }
+[end file by press Ctrl-D]
+{ my-config =
+    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+    | AwsKmsDecrypted :
+        { EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        , PlainText : Text
+        }
+    | AwsKmsEncrypted :
+        { CiphertextBlob : Text
+        , EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        }
+    >.Aes256Encrypted
+      { KeyEnvName = "MY_AES_SECRET"
+      , CiphertextBlob = "yS5rIJ4="
+      , IV = "UpO48O5L6mGoeXJsuaB89Q=="
+      }
+}
+```
+#### to stdout
+```
+> dhall-secret encrypt -f test/example.dhall
+{ aesExample =
+    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+    | AwsKmsDecrypted :
+        { EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        , PlainText : Text
+        }
+    | AwsKmsEncrypted :
+        { CiphertextBlob : Text
+        , EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        }
+    >.Aes256Encrypted
+      { KeyEnvName = "MY_AES_SECRET"
+      , CiphertextBlob = "LxjbrUXYPyUyL3Zs/2e0D+2ERuUl6feqZsAKA8GA"
+      , IV = "vMAEGQmmBzw71yTdnIfqDg=="
+      }
+, kmsExample =
+    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+    | AwsKmsDecrypted :
+        { EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        , PlainText : Text
+        }
+    | AwsKmsEncrypted :
+        { CiphertextBlob : Text
+        , EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        }
+    >.AwsKmsEncrypted
+      { KeyId =
+          "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
+      , CiphertextBlob =
+          "AQICAHi57hQGRM9IFIHoHuk+WakSY0atAV9FXc+z5HouBxa8MAHG1oF/3MNJF3tNIaYnKiFrAAAAdjB0BgkqhkiG9w0BBwagZzBlAgEAMGAGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMI0avfHdpPID2SGr8AgEQgDPAVWUzh7vyhloh3ij/BOS4/jIr/4mvyyJ7Nx0XmM1BlE0NQReINgv+Gpu47U15qq6hHS0="
+      , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
+      }
+, somethingElse = "not secret"
+}
+```
+#### in place
+```
+dhall-secret encrypt -f test/example.dhall --inplace
+```
+#### to a new file
+```
+dhall-secret encrypt -f test/example.dhall -o test/example.encrypted.dhall
+```
+
+### Decrypt
+#### to stdout
+```
+> dhall-secret decrypt -f test/example.encrypted.dhall
+{ aesExample =
+    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+    | AwsKmsDecrypted :
+        { EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        , PlainText : Text
+        }
+    | AwsKmsEncrypted :
+        { CiphertextBlob : Text
+        , EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        }
+    >.Aes256Decrypted
+      { KeyEnvName = "MY_AES_SECRET"
+      , PlainText = "another secret to be encrypted"
+      }
+, kmsExample =
+    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
+    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
+    | AwsKmsDecrypted :
+        { EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        , PlainText : Text
+        }
+    | AwsKmsEncrypted :
+        { CiphertextBlob : Text
+        , EncryptionContext : List { mapKey : Text, mapValue : Text }
+        , KeyId : Text
+        }
+    >.AwsKmsDecrypted
+      { KeyId =
+          "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
+      , PlainText = "a secret to be encrypted"
+      , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
+      }
+, somethingElse = "not secret"
+}
+```
+#### in place
+```
+dhall-secret decrypt -f test/example.encrypted.dhall --inplace
+```
+#### to a new file
+```
+dhall-secret decrypt -f test/example.encrypted.dhall -o test/example.dhall
 ```
 
 ### Re-encrypt
 ```
-dhall-secret decrypt -f test/examples01.encrypted.dhall | dhall-secret encrypt --in-place
+dhall-secret decrypt -f test/example.encrypted.dhall | dhall-secret encrypt --in-place
 ```
