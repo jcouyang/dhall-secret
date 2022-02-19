@@ -20,7 +20,9 @@ data EncryptOpts = EncryptOpts
 data DecryptOpts = DecryptOpts
   { do'file    :: Maybe String
   , do'inplace :: Bool
-  , do'output  :: Maybe String}
+  , do'output  :: Maybe String
+  , do'notypes :: Bool
+  }
 
 data GenTypesOpts = GenTypesOpts { gt'output :: Maybe String }
 
@@ -62,6 +64,7 @@ decryptOpt = DecryptOpts
                <> short 'o'
                <> metavar "FILE"
                <> help "Write result to a file instead of stdout"))
+  <*> switch (long "plain-text" <> short 'p' <> help "decrypt into plain text without types")
 
 encryptCmdParser = hsubparser $ command "encrypt" (info encryptOpt (progDesc "Encrypt a Dhall expression")) <> metavar "encrypt"
 
@@ -78,7 +81,7 @@ main = exec =<< execParser opts
 
 exec :: Command -> IO ()
 exec (Encrypt EncryptOpts {eo'file, eo'output, eo'inplace}) = ioDhallExpr eo'file eo'output eo'inplace encrypt
-exec (Decrypt DecryptOpts {do'file, do'output, do'inplace}) = ioDhallExpr do'file do'output do'inplace decrypt
+exec (Decrypt DecryptOpts {do'file, do'output, do'inplace, do'notypes}) = ioDhallExpr do'file do'output do'inplace (decrypt (DecryptPreference do'notypes))
 exec (GenTypes GenTypesOpts {gt'output}) = do
   let a = pretty Lib.secretType
   maybe (TIO.putStrLn a) (`TIO.writeFile` a) gt'output

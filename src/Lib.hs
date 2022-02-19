@@ -2,6 +2,7 @@ module Lib
   ( encrypt,
     decrypt,
     secretType,
+    DecryptPreference(..),
   )
 where
 
@@ -57,6 +58,9 @@ secretType =
 >
 |]
 
+data DecryptPreference = DecryptPreference
+  { dp'notypes :: Bool
+  }
 encrypt :: Expr Src Void -> IO (Expr Src Void)
 encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
   | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
@@ -100,8 +104,8 @@ encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
     _ -> error "Internal Error when encrypting Aes256Decrypted expr"
 encrypt expr = subExpressions encrypt expr
 
-decrypt :: Expr Src Void -> IO (Expr Src Void)
-decrypt (App (Field u (FieldSelection _ t _)) (RecordLit m))
+decrypt :: DecryptPreference -> Expr Src Void -> IO (Expr Src Void)
+decrypt opts (App (Field u (FieldSelection _ t _)) (RecordLit m))
   | u == secretType && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
     (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ pt)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
       eResp <- case convertFromBase Base64 (T.encodeUtf8 pt) of
@@ -109,7 +113,9 @@ decrypt (App (Field u (FieldSelection _ t _)) (RecordLit m))
         Right a -> awsRun $ send $ KMS.decrypt a & decEncryptionContext .~ mconcat (toList (dhallMapToHashMap <$> ecl))
       case (eResp ^. drsKeyId, eResp ^. drsPlaintext) of
         (Just kid, Just pt) ->
-          pure $
+          pure $ if dp'notypes opts then
+           TextLit (Chunks [] (T.decodeUtf8 pt))
+          else
             App
               (Field u (makeFieldSelection "AwsKmsDecrypted"))
               ( RecordLit $
@@ -141,7 +147,7 @@ decrypt (App (Field u (FieldSelection _ t _)) (RecordLit m))
                   ]
             )
     _ -> error "AES decrypt wrong"
-decrypt expr = subExpressions decrypt expr
+decrypt opts expr = subExpressions (decrypt opts) expr
 
 dhallMapToHashMap :: Expr Src Void -> HashMap T.Text T.Text
 dhallMapToHashMap (RecordLit m) = case (DM.lookup "mapKey" m, DM.lookup "mapValue" m) of

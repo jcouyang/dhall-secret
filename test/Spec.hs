@@ -27,5 +27,5 @@ snapshot src expect = do
   expr <- inputExpr text
   expected <- TIO.readFile expect
   encrypted <- Lib.encrypt expr
-  decrypted <- Lib.decrypt encrypted
+  decrypted <- Lib.decrypt (Lib.DecryptPreference False) encrypted
   assertEqual "snapshot" expected (pretty decrypted <> pack "\n")
