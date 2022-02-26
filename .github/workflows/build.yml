@@ -57,7 +57,7 @@ jobs:
         ls -R
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION lib...
-        sed  "s/0.1.0.0/${VERSION}/" ./package.yaml
+        sed -i "s/0.1.0.0/${VERSION}/" ./package.yaml
         stack sdist
         echo "oyanglulu\n${{ secrets.HACKAGE_PASS }}\nn" | stack upload . --candidate
         echo publishing $VERSION binary...
