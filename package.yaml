@@ -5,7 +5,8 @@ license:             BSD3
 author:              "Jichao Ouyang"
 maintainer:          "oyanglulu@gmail.com"
 copyright:           "2022 Jichao Ouyang"
-
+synopsis: Encrypt Decrypt Dhall expressions
+category: Compiler
 extra-source-files:
 - README.md
 - ChangeLog.md

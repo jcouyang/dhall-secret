@@ -1,4 +1,4 @@
-module Aws where
+module Dhall.Secret.Aws where
 
 import           Control.Lens
 import           Data.Text                (pack)

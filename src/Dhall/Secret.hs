@@ -1,4 +1,4 @@
-module Lib
+module Dhall.Secret
   ( encrypt,
     decrypt,
     secretType,
@@ -6,8 +6,6 @@ module Lib
   )
 where
 
-import qualified Aes
-import           Aws                     (awsRun)
 import           Control.Exception       (throw)
 import           Control.Lens
 import           Crypto.Cipher.AES       (AES256)
@@ -29,6 +27,8 @@ import           Dhall.Core              (Chunks (Chunks),
                                           makeFieldSelection, makeRecordField,
                                           subExpressions)
 import qualified Dhall.Map               as DM
+import qualified Dhall.Secret.Aes        as Aes
+import           Dhall.Secret.Aws        (awsRun)
 import           Dhall.Src               (Src)
 import           Dhall.TH                (dhall)
 import           GHC.Exts                (toList)
@@ -58,9 +58,11 @@ secretType =
 >
 |]
 
+
 data DecryptPreference = DecryptPreference
   { dp'notypes :: Bool
   }
+
 encrypt :: Expr Src Void -> IO (Expr Src Void)
 encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
   | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of

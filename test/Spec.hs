@@ -3,7 +3,7 @@ import           Data.Text
 import qualified Data.Text.IO             as TIO
 import           Dhall
 import           Dhall.Core               (pretty)
-import qualified Lib
+import qualified Dhall.Secret             as Lib
 import           System.Environment       (setEnv)
 import           System.Environment.Blank (getEnv)
 import           Test.HUnit

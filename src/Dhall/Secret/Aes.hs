@@ -2,7 +2,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Aes where
+module Dhall.Secret.Aes where
 import           Crypto.Cipher.AES       (AES256)
 import           Crypto.Cipher.Types     (BlockCipher (..), Cipher (..), IV,
                                           KeySizeSpecifier (..), makeIV)

@@ -7,9 +7,9 @@ import qualified Data.Text.IO        as TIO
 import           Data.Void           (Void)
 import           Dhall               (inputExpr)
 import           Dhall.Core          (Expr, pretty)
+import           Dhall.Secret
 import           Dhall.Src
 import           Dhall.TH
-import           Lib
 import           Options.Applicative
 data EncryptOpts = EncryptOpts
   { eo'file    :: Maybe String
@@ -83,7 +83,7 @@ exec :: Command -> IO ()
 exec (Encrypt EncryptOpts {eo'file, eo'output, eo'inplace}) = ioDhallExpr eo'file eo'output eo'inplace encrypt
 exec (Decrypt DecryptOpts {do'file, do'output, do'inplace, do'notypes}) = ioDhallExpr do'file do'output do'inplace (decrypt (DecryptPreference do'notypes))
 exec (GenTypes GenTypesOpts {gt'output}) = do
-  let a = pretty Lib.secretType
+  let a = pretty secretType
   maybe (TIO.putStrLn a) (`TIO.writeFile` a) gt'output
 
 ioDhallExpr input output inplace op = do
