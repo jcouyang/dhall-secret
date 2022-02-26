@@ -53,13 +53,14 @@ jobs:
     - name: tag release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        HACKAGE_PASS: ${{ secrets.HACKAGE_PASS }}
       run: |
-        ls -R
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION lib...
         sed -i "s/0.1.0.0/${VERSION}/" ./package.yaml
+        stack build
         stack sdist
-        echo "oyanglulu\n${{ secrets.HACKAGE_PASS }}\nn" | stack upload . --candidate
+        echo "oyanglulu\n${HACKAGE_PASS}\nn\n" | stack upload . --candidate
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
         mv macos-10.15-binary/dhall-secret dhall-secret-x86_64-macOS
