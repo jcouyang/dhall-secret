@@ -57,8 +57,7 @@ jobs:
       run: |
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION lib...
-        nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VERSION}/" ./package.yaml'
-        cat package.yaml
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./package.yaml'
         echo -e "oyanglulu\n${HACKAGE_PASS}\nn\n" | stack upload . --candidate
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
