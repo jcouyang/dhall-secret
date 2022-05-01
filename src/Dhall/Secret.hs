@@ -2,6 +2,7 @@ module Dhall.Secret
   ( encrypt,
     decrypt,
     secretType,
+    defineVar,
     DecryptPreference(..),
   )
 where
@@ -17,14 +18,15 @@ import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
+import qualified Data.Text.IO            as TIO
 import qualified Data.Text.Lazy.Encoding as Bytes
-import           Data.Void               (Void)
-import           Dhall                   (Seq)
-import           Dhall.Core              (Chunks (Chunks),
-                                          Expr (App, Field, ListLit, RecordLit, TextLit),
+import           Data.Void               (Void, vacuous)
+import           Dhall                   (Seq, inputExpr, rawInput)
+import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           FieldSelection (FieldSelection),
                                           RecordField (RecordField),
-                                          makeFieldSelection, makeRecordField,
+                                          makeBinding, makeFieldSelection,
+                                          makeRecordField, normalize,
                                           subExpressions)
 import qualified Dhall.Map               as DM
 import qualified Dhall.Secret.Aes        as Aes
@@ -39,6 +41,9 @@ import qualified Network.AWS.KMS         as KMS
 import           Network.AWS.KMS.Decrypt (drsKeyId, drsPlaintext)
 import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
 import           System.Environment      (getEnv)
+
+version :: Expr Src Void
+version = [dhall|./version.dhall|]
 
 secretType :: Expr Src Void
 secretType =
@@ -58,13 +63,16 @@ secretType =
 >
 |]
 
+varName = Var "dhall-secret"
+defineVar :: Expr Src Void -> Expr Src Void
+defineVar = Let (makeBinding "dhall-secret" secretType)
 
 data DecryptPreference = DecryptPreference
   { dp'notypes :: Bool
   }
 
 encrypt :: Expr Src Void -> IO (Expr Src Void)
-encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
+encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
   | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
     ( Just (RecordField _ (TextLit (Chunks _ kid)) _ _),
       Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
@@ -76,7 +84,7 @@ encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
           (Just kid, Just cb) ->
             pure $
               App
-                (Field u (makeFieldSelection "AwsKmsEncrypted"))
+                (Field varName (makeFieldSelection "AwsKmsEncrypted"))
                 ( RecordLit $
                     DM.fromList
                       [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
@@ -85,7 +93,7 @@ encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
                       ]
                 )
           _ -> error (show eResp)
-    _ -> error "AwsKmsDecrypted wrong"
+    _ -> error "Internal Error when encrypting AwsKmsDecrypted expr"
   | u == secretType && t == "Aes256Decrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "PlainText" m) of
     ( Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
       Just (RecordField _ (TextLit (Chunks _ pt)) _ _)
@@ -95,7 +103,7 @@ encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
         encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
         pure $
           App
-            (Field u (makeFieldSelection "Aes256Encrypted"))
+            (Field varName (makeFieldSelection "Aes256Encrypted"))
             ( RecordLit $
                 DM.fromList
                   [ ("KeyEnvName", ken),
@@ -104,10 +112,11 @@ encrypt (App (Field u (FieldSelection src t _)) (RecordLit m))
                   ]
             )
     _ -> error "Internal Error when encrypting Aes256Decrypted expr"
+  | u == secretType = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
 encrypt expr = subExpressions encrypt expr
 
 decrypt :: DecryptPreference -> Expr Src Void -> IO (Expr Src Void)
-decrypt opts (App (Field u (FieldSelection _ t _)) (RecordLit m))
+decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
   | u == secretType && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
     (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ pt)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
       eResp <- case convertFromBase Base64 (T.encodeUtf8 pt) of
@@ -119,7 +128,7 @@ decrypt opts (App (Field u (FieldSelection _ t _)) (RecordLit m))
            TextLit (Chunks [] (T.decodeUtf8 pt))
           else
             App
-              (Field u (makeFieldSelection "AwsKmsDecrypted"))
+              (Field varName (makeFieldSelection "AwsKmsDecrypted"))
               ( RecordLit $
                   DM.fromList
                     [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
@@ -141,7 +150,7 @@ decrypt opts (App (Field u (FieldSelection _ t _)) (RecordLit m))
           Right cbb -> Aes.decrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV cbb
         pure $
           App
-            (Field u (makeFieldSelection "Aes256Decrypted"))
+            (Field varName (makeFieldSelection "Aes256Decrypted"))
             ( RecordLit $
                 DM.fromList
                   [ ("KeyEnvName", ken),
@@ -149,9 +158,10 @@ decrypt opts (App (Field u (FieldSelection _ t _)) (RecordLit m))
                   ]
             )
     _ -> error "AES decrypt wrong"
+  | u == secretType = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
 decrypt opts expr = subExpressions (decrypt opts) expr
 
-dhallMapToHashMap :: Expr Src Void -> HashMap T.Text T.Text
+dhallMapToHashMap :: Expr Src a -> HashMap T.Text T.Text
 dhallMapToHashMap (RecordLit m) = case (DM.lookup "mapKey" m, DM.lookup "mapValue" m) of
   (Just (RecordField _ (TextLit (Chunks _ k)) _ _), Just (RecordField _ (TextLit (Chunks _ v)) _ _)) -> HashMap.singleton k v
   _ -> mempty

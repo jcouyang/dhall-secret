@@ -79,67 +79,35 @@ in  { my-config =
           { KeyEnvName = "MY_AES_SECRET", PlainText = "shhhh" }
     }
 [Ctrl-D]
-< Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-| Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-| AwsKmsDecrypted :
-    { EncryptionContext : List { mapKey : Text, mapValue : Text }
-    , KeyId : Text
-    , PlainText : Text
-    }
-| AwsKmsEncrypted :
-    { CiphertextBlob : Text
-    , EncryptionContext : List { mapKey : Text, mapValue : Text }
-    , KeyId : Text
-    }
->.Aes256Encrypted
-  { KeyEnvName = "MY_AES_SECRET"
-  , CiphertextBlob = "Um5EXmk="
-  , IV = "CdbCJEEk2B8/e2YWTNvMtg=="
-  }
+let dhall-secret = ...
+
+in  dhall-secret.Aes256Encrypted
+      { KeyEnvName = "MY_AES_SECRET"
+      , CiphertextBlob = "Um5EXmk="
+      , IV = "CdbCJEEk2B8/e2YWTNvMtg=="
+      }
 ```
 #### to stdout
 ```
 > dhall-secret encrypt -f test/example.dhall
-{ aesExample =
-    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-    | AwsKmsDecrypted :
-        { EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        , PlainText : Text
-        }
-    | AwsKmsEncrypted :
-        { CiphertextBlob : Text
-        , EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        }
-    >.Aes256Encrypted
-      { KeyEnvName = "MY_AES_SECRET"
-      , CiphertextBlob = "LxjbrUXYPyUyL3Zs/2e0D+2ERuUl6feqZsAKA8GA"
-      , IV = "vMAEGQmmBzw71yTdnIfqDg=="
-      }
-, kmsExample =
-    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-    | AwsKmsDecrypted :
-        { EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        , PlainText : Text
-        }
-    | AwsKmsEncrypted :
-        { CiphertextBlob : Text
-        , EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        }
-    >.AwsKmsEncrypted
-      { KeyId =
-          "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
-      , CiphertextBlob =
-          "AQICAHi57hQGRM9IFIHoHuk+WakSY0atAV9FXc+z5HouBxa8MAHG1oF/3MNJF3tNIaYnKiFrAAAAdjB0BgkqhkiG9w0BBwagZzBlAgEAMGAGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMI0avfHdpPID2SGr8AgEQgDPAVWUzh7vyhloh3ij/BOS4/jIr/4mvyyJ7Nx0XmM1BlE0NQReINgv+Gpu47U15qq6hHS0="
-      , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
-      }
-, somethingElse = "not secret"
-}
+let dhall-secret = ...
+
+in  { aesExample =
+        dhall-secret.Aes256Encrypted
+          { KeyEnvName = "MY_AES_SECRET"
+          , CiphertextBlob = "LxjbrUXYPyUyL3Zs/2e0D+2ERuUl6feqZsAKA8GA"
+          , IV = "vMAEGQmmBzw71yTdnIfqDg=="
+          }
+    , kmsExample =
+        dhall-secret.AwsKmsEncrypted
+          { KeyId =
+              "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
+          , CiphertextBlob =
+              "AQICAHi57hQGRM9IFIHoHuk+WakSY0atAV9FXc+z5HouBxa8MAHG1oF/3MNJF3tNIaYnKiFrAAAAdjB0BgkqhkiG9w0BBwagZzBlAgEAMGAGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMI0avfHdpPID2SGr8AgEQgDPAVWUzh7vyhloh3ij/BOS4/jIr/4mvyyJ7Nx0XmM1BlE0NQReINgv+Gpu47U15qq6hHS0="
+          , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
+          }
+    , somethingElse = "not secret"
+    }
 ```
 #### in place
 ```
@@ -149,49 +117,47 @@ dhall-secret encrypt -f test/example.dhall --inplace
 ```
 dhall-secret encrypt -f test/example.dhall -o test/example.encrypted.dhall
 ```
-
+#### update a encrypted file
+```diff
+let dhall-secret = ...
+in  { foo =
+      { aes256 =
+          dhall-secret.Aes256Encrypted
+            { KeyEnvName = "MY_AES_SECRET"
+            , CiphertextBlob = "QBwc5A=="
+            , IV = "6HNitzH9f3xf27t99XZa9g=="
+            }
+      , plain = "hello world"
+      }
+    }
++  with foo.aes256
++       =
++      dhall-secret.Aes256Decrypted
++        { KeyEnvName = "MY_AES_SECRET", PlainText = "hello AES" }
+```
+then
+```
+dhall-secret encrypt -f test/example.dhall -i
+```
 ### Decrypt
 #### to stdout
 ```
 > dhall-secret decrypt -f test/example.encrypted.dhall
-{ aesExample =
-    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-    | AwsKmsDecrypted :
-        { EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        , PlainText : Text
-        }
-    | AwsKmsEncrypted :
-        { CiphertextBlob : Text
-        , EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        }
-    >.Aes256Decrypted
-      { KeyEnvName = "MY_AES_SECRET"
-      , PlainText = "another secret to be encrypted"
-      }
-, kmsExample =
-    < Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-    | Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-    | AwsKmsDecrypted :
-        { EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        , PlainText : Text
-        }
-    | AwsKmsEncrypted :
-        { CiphertextBlob : Text
-        , EncryptionContext : List { mapKey : Text, mapValue : Text }
-        , KeyId : Text
-        }
-    >.AwsKmsDecrypted
-      { KeyId =
-          "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
-      , PlainText = "a secret to be encrypted"
-      , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
-      }
-, somethingElse = "not secret"
-}
+let dhall-secret = ...
+in  { aesExample =
+        dhall-secret.Aes256Decrypted
+          { KeyEnvName = "MY_AES_SECRET"
+          , PlainText = "another secret to be encrypted"
+          }
+    , kmsExample =
+        dhall-secret.AwsKmsDecrypted
+          { KeyId =
+              "arn:aws:kms:ap-southeast-2:930712508576:key/5d2e1d54-c2e6-49a8-924d-bed828e792ed"
+          , PlainText = "a secret to be encrypted"
+          , EncryptionContext = [] : List { mapKey : Text, mapValue : Text }
+          }
+    , somethingElse = "not secret"
+    }
 ```
 #### in place
 ```

@@ -52,6 +52,7 @@ encryptOpt = EncryptOpts
                <> metavar "FILE"
                <> help "Write result to a file instead of stdout"))
 
+
 decryptOpt = DecryptOpts
   <$> optional (strOption
                 (long "file"
@@ -72,7 +73,9 @@ decryptCmdParser = hsubparser $ command "decrypt" (info decryptOpt (progDesc "De
 
 genTypesCmdParser = hsubparser $ command "gen-types" (info genTypesOpt (progDesc "generate types")) <> metavar "gen-types"
 
-commands = Encrypt <$> encryptCmdParser <|> Decrypt <$>decryptCmdParser <|> GenTypes <$> genTypesCmdParser
+commands = Encrypt <$> encryptCmdParser
+  <|> Decrypt <$>decryptCmdParser
+  <|> GenTypes <$> genTypesCmdParser
 
 main :: IO ()
 main = exec =<< execParser opts
@@ -89,5 +92,5 @@ exec (GenTypes GenTypesOpts {gt'output}) = do
 ioDhallExpr input output inplace op = do
   text <- maybe TIO.getContents TIO.readFile input
   expr <- inputExpr text
-  encrypted <- pretty <$> op expr
-  maybe (TIO.putStrLn encrypted) (`TIO.writeFile` encrypted) (output <|> (if  inplace then input else Nothing))
+  procssed <- pretty . defineVar <$> op expr
+  maybe (TIO.putStrLn procssed) (`TIO.writeFile` procssed) (output <|> (if  inplace then input else Nothing))

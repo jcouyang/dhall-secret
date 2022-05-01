@@ -21,11 +21,10 @@ main = do
     Just "ALL" -> runTestTTAndExit (test [testKms, testAes])
     _          -> runTestTTAndExit (test [testAes])
 
-
 snapshot src expect = do
   text <- TIO.readFile src
   expr <- inputExpr text
   expected <- TIO.readFile expect
-  encrypted <- Lib.encrypt expr
-  decrypted <- Lib.decrypt (Lib.DecryptPreference False) encrypted
+  encrypted <- Lib.encrypt expr >>= inputExpr . (pretty . Lib.defineVar)
+  decrypted <- Lib.defineVar <$> Lib.decrypt (Lib.DecryptPreference False) encrypted
   assertEqual "snapshot" expected (pretty decrypted <> pack "\n")
