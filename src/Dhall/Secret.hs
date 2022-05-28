@@ -10,7 +10,11 @@ where
 import           Control.Exception       (throw)
 import           Control.Lens
 import           Crypto.Cipher.AES       (AES256)
-import           Data.ByteArray          (ByteArray)
+import           Crypto.Cipher.AESGCMSIV (nonce)
+import           Crypto.Cipher.Types     (AuthTag (AuthTag, unAuthTag))
+import           Crypto.Error            (throwCryptoErrorIO)
+import           Crypto.MAC.Poly1305     (Auth (Auth))
+import           Data.ByteArray          (ByteArray, ByteArrayAccess, convert)
 import           Data.ByteArray.Encoding (Base (Base64), convertFromBase,
                                           convertToBase)
 import           Data.ByteString         (ByteString)
@@ -31,6 +35,7 @@ import           Dhall.Core              (Chunks (Chunks), Expr (..),
 import qualified Dhall.Map               as DM
 import qualified Dhall.Secret.Aes        as Aes
 import           Dhall.Secret.Aws        (awsRun)
+import qualified Dhall.Secret.Chacha     as Chacha
 import           Dhall.Src               (Src)
 import           Dhall.TH                (dhall)
 import           GHC.Exts                (toList)
@@ -46,22 +51,10 @@ version :: Expr Src Void
 version = [dhall|./version.dhall|]
 
 secretType :: Expr Src Void
-secretType =
-  [dhall|
-< Aes256Decrypted : { KeyEnvName : Text, PlainText : Text }
-| Aes256Encrypted : { CiphertextBlob : Text, IV : Text, KeyEnvName : Text }
-| AwsKmsDecrypted :
-    { EncryptionContext : List { mapKey : Text, mapValue : Text }
-    , KeyId : Text
-    , PlainText : Text
-    }
-| AwsKmsEncrypted :
-    { CiphertextBlob : Text
-    , EncryptionContext : List { mapKey : Text, mapValue : Text }
-    , KeyId : Text
-    }
->
-|]
+secretType = [dhall|./Type.dhall|]
+
+symmetricType :: Expr Src Void
+symmetricType = [dhall|./SymmetricType.dhall|]
 
 varName = Var "dhall-secret"
 defineVar :: Expr Src Void -> Expr Src Void
@@ -88,30 +81,31 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
                 ( RecordLit $
                     DM.fromList
                       [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
-                        ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 cb)))),
+                        ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (byteStringToB64 cb)))),
                         ("EncryptionContext", ec)
                       ]
                 )
           _ -> error (show eResp)
     _ -> error "Internal Error when encrypting AwsKmsDecrypted expr"
-  | u == secretType && t == "Aes256Decrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "PlainText" m) of
-    ( Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ pt)) _ _)
-      ) -> do
-        secret <- getEnv (T.unpack keyEnv)
-        initIV <- Aes.genRandomIV (undefined :: AES256)
-        encrypted <- Aes.encrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV (T.encodeUtf8 pt)
-        pure $
-          App
-            (Field varName (makeFieldSelection "Aes256Encrypted"))
-            ( RecordLit $
-                DM.fromList
-                  [ ("KeyEnvName", ken),
-                    ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 encrypted)))),
-                    ("IV", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 $ convertToBase Base64 initIV))))
-                  ]
-            )
-    _ -> error "Internal Error when encrypting Aes256Decrypted expr"
+  | u == secretType && t == "SymmetricDecrypted" = case
+      ( DM.lookup "Type" m,
+        DM.lookup "KeyEnvName" m,
+        DM.lookup "PlainText" m,
+        DM.lookup "Context" m) of
+        (Just stpe@(RecordField _ (Field symmetricType (FieldSelection _ tpe _)) _ _),
+         Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
+         Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
+         Just (RecordField _ (TextLit (Chunks _ ctx)) _ _)) -> do
+          secret <- T.encodeUtf8 . T.pack <$> getEnv (T.unpack keyEnv)
+          let (c,p) = (T.encodeUtf8 ctx, T.encodeUtf8 pt)
+          case tpe of
+            "AES256"         -> do
+              (tag, salt, nonce, cb) <- Aes.encrypt secret c p
+              pure $ mkSymmetricExpr stpe ken cb nonce salt (unAuthTag tag) ctx
+            "ChaChaPoly1305" -> do
+              (tag, salt, nonce, cb) <- Chacha.encrypt secret c p
+              pure $ mkSymmetricExpr stpe ken cb nonce salt tag ctx
+        _ -> error "Internal Error when encrypting Symmetric expr"
   | u == secretType = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
 encrypt expr = subExpressions encrypt expr
 
@@ -133,31 +127,37 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
                   DM.fromList
                     [ ("KeyId", makeRecordField (TextLit (Chunks [] kid))),
                       ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 pt)))),
-                      ("EncryptionContext", ec)
-                    ]
-              )
+                      ("Context", ec)
+                    ])
         _ -> error (show eResp)
     _ -> error "AwsKmsDecrypted wrong"
-  | u == secretType && t == "Aes256Encrypted" = case (DM.lookup "KeyEnvName" m, DM.lookup "CiphertextBlob" m, DM.lookup "IV" m) of
-    ( Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
+  | u == secretType && t == "SymmetricEncrypted" = case (DM.lookup "Type" m,
+                                                         DM.lookup "KeyEnvName" m,
+                                                         DM.lookup "CiphertextBlob" m,
+                                                         DM.lookup "Nonce" m,
+                                                         DM.lookup "Salt" m,
+                                                         DM.lookup "Tag" m,
+                                                         DM.lookup "Context" m) of
+    ( Just stpe@(RecordField _ (Field symmetricType (FieldSelection _ tpe _)) _ _),
+      Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
       Just (RecordField _ (TextLit (Chunks _ cb)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ iv)) _ _)
+      Just (RecordField _ (TextLit (Chunks _ iv)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ salt)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ tag)) _ _),
+      Just (RecordField _ (TextLit (Chunks _ ctx)) _ _)
       ) -> do
-        secret <- getEnv (T.unpack keyEnv)
-        initIV <- Aes.mkIV (undefined :: AES256) iv
-        decrypted <- case convertFromBase Base64 (T.encodeUtf8 cb) of
-          Left e -> error (show e)
-          Right cbb -> Aes.decrypt (Aes.mkSecretKey (undefined :: AES256) (T.encodeUtf8 $ T.pack secret)) initIV cbb
-        pure $
-          App
-            (Field varName (makeFieldSelection "Aes256Decrypted"))
-            ( RecordLit $
-                DM.fromList
-                  [ ("KeyEnvName", ken),
-                    ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))
-                  ]
-            )
-    _ -> error "AES decrypt wrong"
+        secret <- T.encodeUtf8 . T.pack <$> getEnv (T.unpack keyEnv)
+        case traverse b64StringToByteString [iv, salt, tag, cb] of
+          Right [iv, s, t, c] -> do
+            case tpe of
+              "AES256" -> do
+                pt <- Aes.decrypt secret (T.encodeUtf8 ctx) c (AuthTag (convert t)) s iv
+                pure $ mkSymmetricDecryptedExpr stpe ken pt ctx
+              "ChaChaPoly1305" -> do
+                pt <- Chacha.decrypt secret (T.encodeUtf8 ctx) c (Auth (convert t)) s iv
+                pure $ mkSymmetricDecryptedExpr stpe ken pt ctx
+          Left e    -> error (show e)
+    _ -> error "Symmetric decrypt wrong"
   | u == secretType = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
 decrypt opts expr = subExpressions (decrypt opts) expr
 
@@ -166,3 +166,34 @@ dhallMapToHashMap (RecordLit m) = case (DM.lookup "mapKey" m, DM.lookup "mapValu
   (Just (RecordField _ (TextLit (Chunks _ k)) _ _), Just (RecordField _ (TextLit (Chunks _ v)) _ _)) -> HashMap.singleton k v
   _ -> mempty
 dhallMapToHashMap _ = mempty
+
+b64StringToByteString :: T.Text -> Either String ByteString
+b64StringToByteString = convertFromBase Base64 . T.encodeUtf8
+
+byteStringToB64 :: (ByteArrayAccess baa) => baa -> T.Text
+byteStringToB64 = T.decodeUtf8 . convertToBase Base64
+
+mkSymmetricExpr tpe ken cb nonce salt tag ctx = App
+            (Field varName (makeFieldSelection "SymmetricEncrypted"))
+            ( RecordLit $
+                DM.fromList
+                  [ ("Type",tpe),
+                    ("KeyEnvName", ken),
+                    ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (byteStringToB64 cb)))),
+                    ("Nonce", makeRecordField (TextLit (Chunks [] (byteStringToB64 nonce)))),
+                    ("Salt", makeRecordField (TextLit (Chunks [] (byteStringToB64 salt)))),
+                    ("Tag", makeRecordField (TextLit (Chunks [] (byteStringToB64 tag)))),
+                    ("Context", makeRecordField (TextLit (Chunks [] ctx)))
+                  ]
+            )
+
+mkSymmetricDecryptedExpr tpe ken pt ctx =       App
+            (Field varName (makeFieldSelection "SymmetricDecrypted"))
+            ( RecordLit $
+                DM.fromList
+                  [ ("Type", tpe),
+                    ("KeyEnvName", ken),
+                    ("Context", makeRecordField (TextLit (Chunks [] ctx))),
+                    ("PlainText", makeRecordField (TextLit (Chunks [] ((T.decodeUtf8 . convert) pt))))
+                  ]
+            )
