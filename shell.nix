@@ -10,6 +10,7 @@ haskell.lib.buildStackProject {
   buildInputs = [
     stack
     zlib.dev
+    age
     haskell.compiler.ghc8107
   ];
 }

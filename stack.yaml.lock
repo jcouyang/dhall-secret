@@ -18,6 +18,13 @@ packages:
       sha256: 9d970bf5f98e68e8fc129b04d6c9d8eb1e641c7556ffd0f0a168a259335b6fd7
   original:
     hackage: unliftio-core-0.1.2.0@sha256:b0a7652ffce2284a6cebe05c99eb60573a8fb6631163f34b0b30a80b4a78cb23,1081
+- completed:
+    hackage: base64-0.3.1.1@sha256:49928f5691e41e09f12ab22e4de2d2fb2ab05eef64bee613b6379d74a8da8658,2386
+    pantry-tree:
+      size: 752
+      sha256: 9a9cdf111978078f182b3197ef2099c2c534c329b9a387e0c069d731352066a3
+  original:
+    hackage: base64-0.3.1.1@sha256:49928f5691e41e09f12ab22e4de2d2fb2ab05eef64bee613b6379d74a8da8658,2386
 snapshots:
 - completed:
     size: 587819
