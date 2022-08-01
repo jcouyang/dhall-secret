@@ -68,8 +68,8 @@ encryptChunk :: ByteString -> ByteString -> ByteString -> ByteString -> IO ByteS
 encryptChunk key nonce msg isFinal = throwCryptoErrorIO $ do
     payloadNonce <- nonce12 $ (nonce <> isFinal)
     st <- CC.initialize key payloadNonce
-    let (ba, _) = CC.encrypt msg st
-    return ba
+    let (e, st1) = CC.encrypt msg st
+    return $ e <> (convert $ CC.finalize st1)
 
 toRecipient :: X25519Identity -> X25519Recipient
 toRecipient (X25519Identity pub _) = X25519Recipient pub
@@ -87,12 +87,13 @@ mkStanza fileKey (X25519Recipient theirPK) = do
   ourKey <- X25519.generateSecretKey
   let ourPK = X255519.toPublic ourKey
   let shareKey = X25519.dh theirPK ourKey
-  let salt  = (convert ourKey) <> (convert theirPK) :: ByteString
+  let salt  = (convert ourPK) <> (convert theirPK) :: ByteString
+  let wrappingKey = hkdf "age-encryption.org/v1/X25519" (convert shareKey) salt
   body <- throwCryptoErrorIO $ do
-    nonce <- nonce12 (BS.pack $ BS.unpack zeroNonce <> [0])
-    st <- CC.initialize (hkdf "age-encryption.org/v1/X25519" fileKey salt) nonce
-    let (ba, _) = CC.encrypt fileKey st
-    return ba
+    nonce <- CC.nonce12 (BS.pack $ BS.unpack zeroNonce <> [0])
+    st0 <- CC.finalizeAAD <$> CC.initialize wrappingKey nonce
+    let (e, st1) = CC.encrypt fileKey st0
+    return $ e <> (convert $ CC.finalize st1)
   pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [encodeBase64Unpadded' (convert theirPK)]}
 
 marshalStanza :: Stanza -> ByteString
