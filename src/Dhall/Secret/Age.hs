@@ -48,8 +48,9 @@ encrypt recipients msg = do
   stanzas <- traverse (mkStanza fileKey) recipients
   -- HMAC key = HKDF-SHA-256(ikm = file key, salt = empty, info = "header")
   print "encrypting body"
-  body <- encryptChunks (payloadKey nonce fileKey) zeroNonce msg
-  pure $ pemHeader <> "\n" <> (wrap64b . b64enc) (mkHeader fileKey stanzas <> body) <> "\n" <> pemFooter
+  body <-  encryptChunks (payloadKey nonce fileKey) zeroNonce msg
+  print $ "-----nonce>" <> b64enc nonce
+  pure $ pemHeader <> "\n" <> (wrap64b . b64enc) (mkHeader fileKey stanzas <> nonce <> body) <> "\n" <> pemFooter
   where
     payloadKey :: ByteString -> ByteString -> ByteString
     payloadKey nonce filekey = HKDF.expand (HKDF.extract  nonce filekey ::PRK SHA256) ("payload" :: ByteString) 32
@@ -67,7 +68,7 @@ encryptChunks key nonce msg = case BS.splitAt 64 msg of
 encryptChunk :: ByteString -> ByteString -> ByteString -> ByteString -> IO ByteString
 encryptChunk key nonce msg isFinal = throwCryptoErrorIO $ do
     payloadNonce <- nonce12 $ (nonce <> isFinal)
-    st <- CC.initialize key payloadNonce
+    st <- CC.finalizeAAD <$> CC.initialize key payloadNonce
     let (e, st1) = CC.encrypt msg st
     return $ e <> (convert $ CC.finalize st1)
 
@@ -90,11 +91,17 @@ mkStanza fileKey (X25519Recipient theirPK) = do
   let salt  = (convert ourPK) <> (convert theirPK) :: ByteString
   let wrappingKey = hkdf "age-encryption.org/v1/X25519" (convert shareKey) salt
   body <- throwCryptoErrorIO $ do
-    nonce <- CC.nonce12 (BS.pack $ BS.unpack zeroNonce <> [0])
-    st0 <- CC.finalizeAAD <$> CC.initialize wrappingKey nonce
+    nonce <- CC.nonce12 (BS.pack $ take 12 $ repeat 0)
+    st0 <- CC.initialize wrappingKey nonce
     let (e, st1) = CC.encrypt fileKey st0
     return $ e <> (convert $ CC.finalize st1)
-  pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [encodeBase64Unpadded' (convert theirPK)]}
+  print $ "-----ourPK>" <> b64enc ourPK
+  print $ "-----theirPK>" <> b64enc theirPK
+  print $ "-----salt>" <> b64enc salt
+  print $ "-----wrappingkey>" <> b64enc wrappingKey
+  print $ "-----filekey>" <> b64enc fileKey
+  print $ "-----body>" <> b64enc body
+  pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [encodeBase64Unpadded' (convert ourPK)]}
 
 marshalStanza :: Stanza -> ByteString
 marshalStanza stanza =
@@ -119,7 +126,7 @@ hkdf :: ByteString -> ByteString -> ByteString -> ByteString
 hkdf info key salt = HKDF.expand (HKDF.extract  salt key ::PRK SHA256) info 32
 
 b64enc bs = convertToBase Base64 (convert bs :: ByteString) :: ByteString
-b64UnpadEnc bs = convertToBase Base64URLUnpadded (convert bs :: ByteString) :: ByteString
+
 incNonce :: ByteString -> ByteString
 incNonce n = BS.pack . snd $ foldr inc1 (True, []) (BS.unpack n)
   where
@@ -127,7 +134,7 @@ incNonce n = BS.pack . snd $ foldr inc1 (True, []) (BS.unpack n)
     inc1 cur (False, acc) = (False, cur : acc)
 
 zeroNonce :: ByteString
-zeroNonce = BS.pack (take 11 [0,0..])
+zeroNonce = BS.pack (take 11 $ repeat 0)
 
 wrap64b :: ByteString  -> ByteString
 wrap64b bs =
