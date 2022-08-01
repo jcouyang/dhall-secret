@@ -1,19 +1,12 @@
 let T = ./Type.dhall
 
 in  { foo =
-      { aes256 =
-          T.SymmetricDecrypted
-            { Type = (./SymmetricType.dhall).AES256
-            , KeyEnvName = "MY_AES_SECRET"
-            , PlainText = "hello AES"
-            , Context = "context"
-            }
-      , chacha =
-          T.SymmetricDecrypted
-            { Type = (./SymmetricType.dhall).ChaChaPoly1305
-            , KeyEnvName = "MY_AES_SECRET"
-            , PlainText = "hello Chacha"
-            , Context = "chacha"
+      { ageSecret =
+          T.AgeDecrypted
+            { Recipients =
+              [ "age125mzp30ssxpeudr9nfcyp4paytxp34950vc828a5grf48lgdrucqx8mar3"
+              ]
+            , PlainText = "hello age!"
             }
       , plain = "hello world"
       }

@@ -8,19 +8,6 @@
     , EncryptionContext : List { mapKey : Text, mapValue : Text }
     , KeyId : Text
     }
-| SymmetricDecrypted :
-    { Context : Text
-    , KeyEnvName : Text
-    , PlainText : Text
-    , Type : < AES256 | ChaChaPoly1305 >
-    }
-| SymmetricEncrypted :
-    { CiphertextBlob : Text
-    , Context : Text
-    , KeyEnvName : Text
-    , Nonce : Text
-    , Salt : Text
-    , Tag : Text
-    , Type : < AES256 | ChaChaPoly1305 >
-    }
+| AgeDecrypted : { Recipients : List Text, PlainText : Text }
+| AgeEncrypted : { Recipients : List Text, CiphertextBlob : Text }
 >

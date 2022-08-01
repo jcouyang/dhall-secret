@@ -34,6 +34,7 @@ import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           subExpressions)
 import qualified Dhall.Map               as DM
 import qualified Dhall.Secret.Aes        as Aes
+import qualified Dhall.Secret.Age        as Age
 import           Dhall.Secret.Aws        (awsRun)
 import qualified Dhall.Secret.Chacha     as Chacha
 import           Dhall.Src               (Src)
@@ -87,24 +88,20 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
                 )
           _ -> error (show eResp)
     _ -> error "Internal Error when encrypting AwsKmsDecrypted expr"
-  | u == secretType && t == "SymmetricDecrypted" = case
-      ( DM.lookup "Type" m,
-        DM.lookup "KeyEnvName" m,
-        DM.lookup "PlainText" m,
-        DM.lookup "Context" m) of
-        (Just stpe@(RecordField _ (Field symmetricType (FieldSelection _ tpe _)) _ _),
-         Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
-         Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
-         Just (RecordField _ (TextLit (Chunks _ ctx)) _ _)) -> do
-          secret <- T.encodeUtf8 . T.pack <$> getEnv (T.unpack keyEnv)
-          let (c,p) = (T.encodeUtf8 ctx, T.encodeUtf8 pt)
-          case tpe of
-            "AES256"         -> do
-              (tag, salt, nonce, cb) <- Aes.encrypt secret c p
-              pure $ mkSymmetricExpr stpe ken cb nonce salt (unAuthTag tag) ctx
-            "ChaChaPoly1305" -> do
-              (tag, salt, nonce, cb) <- Chacha.encrypt secret c p
-              pure $ mkSymmetricExpr stpe ken cb nonce salt tag ctx
+  | u == secretType && t == "AgeDecrypted" = case
+      ( DM.lookup "Recipients" m,
+        DM.lookup "PlainText" m) of
+        (Just (RecordField _ (ListLit _ pks) _ _),
+         Just (RecordField _ (TextLit (Chunks _ plaintext)) _ _)) -> do
+          rs <- traverse Age.parseRecipient (toList $ extractTextLit <$> pks)
+          encrypted <- Age.encrypt rs (T.encodeUtf8 plaintext)
+          pure $ App
+              (Field varName (makeFieldSelection "AgeEncrypted"))
+              ( RecordLit $
+                  DM.fromList
+                    [ ("Recipients", makeRecordField (ListLit Nothing pks)),
+                      ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 encrypted))))
+                    ])
         _ -> error "Internal Error when encrypting Symmetric expr"
   | u == secretType = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
 encrypt expr = subExpressions encrypt expr
@@ -130,33 +127,7 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
                       ("Context", ec)
                     ])
         _ -> error (show eResp)
-    _ -> error "AwsKmsDecrypted wrong"
-  | u == secretType && t == "SymmetricEncrypted" = case (DM.lookup "Type" m,
-                                                         DM.lookup "KeyEnvName" m,
-                                                         DM.lookup "CiphertextBlob" m,
-                                                         DM.lookup "Nonce" m,
-                                                         DM.lookup "Salt" m,
-                                                         DM.lookup "Tag" m,
-                                                         DM.lookup "Context" m) of
-    ( Just stpe@(RecordField _ (Field symmetricType (FieldSelection _ tpe _)) _ _),
-      Just ken@(RecordField _ (TextLit (Chunks _ keyEnv)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ cb)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ iv)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ salt)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ tag)) _ _),
-      Just (RecordField _ (TextLit (Chunks _ ctx)) _ _)
-      ) -> do
-        secret <- T.encodeUtf8 . T.pack <$> getEnv (T.unpack keyEnv)
-        case traverse b64StringToByteString [iv, salt, tag, cb] of
-          Right [iv, s, t, c] -> do
-            case tpe of
-              "AES256" -> do
-                pt <- Aes.decrypt secret (T.encodeUtf8 ctx) c (AuthTag (convert t)) s iv
-                pure $ mkSymmetricDecryptedExpr stpe ken pt ctx
-              "ChaChaPoly1305" -> do
-                pt <- Chacha.decrypt secret (T.encodeUtf8 ctx) c (Auth (convert t)) s iv
-                pure $ mkSymmetricDecryptedExpr stpe ken pt ctx
-          Left e    -> error (show e)
+    -- _ -> error "AwsKmsDecrypted wrong"
     _ -> error "Symmetric decrypt wrong"
   | u == secretType = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
 decrypt opts expr = subExpressions (decrypt opts) expr
@@ -173,27 +144,6 @@ b64StringToByteString = convertFromBase Base64 . T.encodeUtf8
 byteStringToB64 :: (ByteArrayAccess baa) => baa -> T.Text
 byteStringToB64 = T.decodeUtf8 . convertToBase Base64
 
-mkSymmetricExpr tpe ken cb nonce salt tag ctx = App
-            (Field varName (makeFieldSelection "SymmetricEncrypted"))
-            ( RecordLit $
-                DM.fromList
-                  [ ("Type",tpe),
-                    ("KeyEnvName", ken),
-                    ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (byteStringToB64 cb)))),
-                    ("Nonce", makeRecordField (TextLit (Chunks [] (byteStringToB64 nonce)))),
-                    ("Salt", makeRecordField (TextLit (Chunks [] (byteStringToB64 salt)))),
-                    ("Tag", makeRecordField (TextLit (Chunks [] (byteStringToB64 tag)))),
-                    ("Context", makeRecordField (TextLit (Chunks [] ctx)))
-                  ]
-            )
-
-mkSymmetricDecryptedExpr tpe ken pt ctx =       App
-            (Field varName (makeFieldSelection "SymmetricDecrypted"))
-            ( RecordLit $
-                DM.fromList
-                  [ ("Type", tpe),
-                    ("KeyEnvName", ken),
-                    ("Context", makeRecordField (TextLit (Chunks [] ctx))),
-                    ("PlainText", makeRecordField (TextLit (Chunks [] ((T.decodeUtf8 . convert) pt))))
-                  ]
-            )
+extractTextLit :: Expr Src Void -> T.Text
+extractTextLit (TextLit (Chunks _ t)) = t
+extractTextLit _                      = ""

@@ -18,6 +18,7 @@ import           Data.ByteArray.Encoding      (Base (Base64, Base64URLUnpadded),
 import           Data.ByteString              (ByteString, empty, intercalate)
 import qualified Data.ByteString              as BS
 import           Data.ByteString.Base64       (encodeBase64Unpadded')
+import           Data.Maybe                   (fromMaybe)
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as TE
@@ -44,12 +45,8 @@ encrypt :: [X25519Recipient] -> ByteString -> IO ByteString
 encrypt recipients msg = do
   fileKey <- getRandomBytes 16 :: IO ByteString
   nonce <- getRandomBytes 16 :: IO ByteString
-  print "generating stanza..."
   stanzas <- traverse (mkStanza fileKey) recipients
-  -- HMAC key = HKDF-SHA-256(ikm = file key, salt = empty, info = "header")
-  print "encrypting body"
   body <-  encryptChunks (payloadKey nonce fileKey) zeroNonce msg
-  print $ "-----nonce>" <> b64enc nonce
   pure $ pemHeader <> "\n" <> (wrap64b . b64enc) (mkHeader fileKey stanzas <> nonce <> body) <> "\n" <> pemFooter
   where
     payloadKey :: ByteString -> ByteString -> ByteString
@@ -61,7 +58,7 @@ generateX25519Identity = do
   pure $ X25519Identity (X25519.toPublic sec) sec
 
 encryptChunks :: ByteString -> ByteString -> ByteString -> IO ByteString
-encryptChunks key nonce msg = case BS.splitAt 64 msg of
+encryptChunks key nonce msg = case BS.splitAt (64 * 1024) msg of
   (head, tail) | tail == BS.empty -> encryptChunk key nonce head (BS.pack [1])
   (head, tail)                    -> encryptChunk key nonce head (BS.pack [0]) <> encryptChunks key (incNonce nonce) tail
 
@@ -75,12 +72,21 @@ encryptChunk key nonce msg isFinal = throwCryptoErrorIO $ do
 toRecipient :: X25519Identity -> X25519Recipient
 toRecipient (X25519Identity pub _) = X25519Recipient pub
 
+parseRecipient :: Text -> IO X25519Recipient
+parseRecipient r = X25519Recipient <$> throwCryptoErrorIO (X25519.publicKey $ b32dec r)
+
+
 b32 :: (ByteArrayAccess b) => Text -> b -> Text
 b32 header b = case Bech32.humanReadablePartFromText header of
         Left e -> T.pack $ show e
         Right header -> case Bech32.encode header (Bech32.dataPartFromBytes (convert b)) of
           Left e  -> T.pack $ show e
           Right t -> t
+
+b32dec :: Text -> ByteString
+b32dec r = case Bech32.decode r of
+  Left e         -> ""
+  Right (hrp, d) -> fromMaybe "" $ Bech32.dataPartToBytes d
 
 -- https://github.com/FiloSottile/age/blob/084c974f5393e5d2776fb1bb3a35eeed271a32fa/x25519.go#L64
 mkStanza ::   ByteString -> X25519Recipient -> IO Stanza
@@ -95,12 +101,6 @@ mkStanza fileKey (X25519Recipient theirPK) = do
     st0 <- CC.initialize wrappingKey nonce
     let (e, st1) = CC.encrypt fileKey st0
     return $ e <> (convert $ CC.finalize st1)
-  print $ "-----ourPK>" <> b64enc ourPK
-  print $ "-----theirPK>" <> b64enc theirPK
-  print $ "-----salt>" <> b64enc salt
-  print $ "-----wrappingkey>" <> b64enc wrappingKey
-  print $ "-----filekey>" <> b64enc fileKey
-  print $ "-----body>" <> b64enc body
   pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [encodeBase64Unpadded' (convert ourPK)]}
 
 marshalStanza :: Stanza -> ByteString
