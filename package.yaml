@@ -33,6 +33,7 @@ dependencies:
 - unordered-containers
 - text
 - bech32
+- pem
 
 library:
   source-dirs: src

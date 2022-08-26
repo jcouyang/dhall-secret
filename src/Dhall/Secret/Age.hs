@@ -1,10 +1,19 @@
 -- https://github.com/C2SP/C2SP/blob/bb6dd888ef54df1b2df1c12dc3e3d05d129ffc0d/age.md
 module Dhall.Secret.Age where
 import qualified Codec.Binary.Bech32          as Bech32
-import           Crypto.Cipher.ChaChaPoly1305 as CC
-import           Crypto.Error                 (throwCryptoError,
+import           Control.Arrow                (Arrow (first),
+                                               ArrowChoice (left))
+import           Control.Exception            (throwIO)
+import           Control.Monad                (join)
+import           Control.Monad.IO.Class       (MonadIO (liftIO))
+import           Crypto.Cipher.ChaChaPoly1305 as CC (decrypt, encrypt, finalize,
+                                                     finalizeAAD, initialize,
+                                                     nonce12)
+import           Crypto.Cipher.Types          (Cipher (cipherInit))
+import           Crypto.Error                 (maybeCryptoError,
+                                               throwCryptoError,
                                                throwCryptoErrorIO)
-import           Crypto.Hash
+import           Crypto.Hash                  (SHA256)
 import           Crypto.KDF.HKDF              (PRK)
 import qualified Crypto.KDF.HKDF              as HKDF
 import           Crypto.MAC.HMAC              (HMAC (HMAC), hmac)
@@ -17,8 +26,14 @@ import           Data.ByteArray.Encoding      (Base (Base64, Base64URLUnpadded),
                                                convertToBase)
 import           Data.ByteString              (ByteString, empty, intercalate)
 import qualified Data.ByteString              as BS
-import           Data.ByteString.Base64       (encodeBase64Unpadded')
-import           Data.Maybe                   (fromMaybe)
+import           Data.ByteString.Base64       (decodeBase64,
+                                               decodeBase64Unpadded,
+                                               encodeBase64Unpadded')
+import           Data.Char                    (isSpace)
+import           Data.Either                  (fromRight)
+import           Data.List                    (find)
+import           Data.Maybe                   (fromMaybe, isJust)
+import           Data.PEM                     (PEM (..), pemParseBS, pemWriteBS)
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as TE
@@ -38,8 +53,7 @@ instance Show X25519Identity where
 
 data Header = Header [Stanza] ByteString
 
-pemHeader = "-----BEGIN AGE ENCRYPTED FILE-----"
-pemFooter = "-----END AGE ENCRYPTED FILE-----"
+data CipherBlock = Cipher Header ByteString ByteString
 
 encrypt :: [X25519Recipient] -> ByteString -> IO ByteString
 encrypt recipients msg = do
@@ -47,10 +61,71 @@ encrypt recipients msg = do
   nonce <- getRandomBytes 16 :: IO ByteString
   stanzas <- traverse (mkStanza fileKey) recipients
   body <-  encryptChunks (payloadKey nonce fileKey) zeroNonce msg
-  pure $ pemHeader <> "\n" <> (wrap64b . b64enc) (mkHeader fileKey stanzas <> nonce <> body) <> "\n" <> pemFooter
+  pure $ pemWriteBS $ PEM { pemName ="AGE ENCRYPTED FILE", pemHeader = [], pemContent = mkHeader fileKey stanzas <> nonce <> body}
   where
     payloadKey :: ByteString -> ByteString -> ByteString
     payloadKey nonce filekey = HKDF.expand (HKDF.extract  nonce filekey ::PRK SHA256) ("payload" :: ByteString) 32
+
+decrypt :: ByteString -> [X25519Identity] -> IO ByteString
+decrypt ciphertext identities = do
+  (Cipher header nonce body) <- _ $ parseCipher ciphertext
+  case findFileKey identities header of
+    Just key -> decryptChunks key nonce body
+    Nothing  -> _
+
+decryptChunks :: ByteString -> ByteString -> ByteString -> IO ByteString
+decryptChunks key nonce body = case BS.splitAt (64 * 1024) body of
+  (head, tail) | tail == BS.empty -> decryptChunk key nonce head (BS.pack [1])
+  (head, tail)                    -> decryptChunk key nonce head (BS.pack [0]) <> decryptChunks key (incNonce nonce) tail
+
+decryptChunk :: ByteString -> ByteString -> ByteString -> ByteString -> IO ByteString
+decryptChunk key nonce msg isFinal = throwCryptoErrorIO $ do
+    payloadNonce <- nonce12 $ (nonce <> isFinal)
+    st <- CC.initialize key payloadNonce
+    let (d, _) = CC.decrypt msg st
+    return $ d
+
+parseCipher :: ByteString -> Either String CipherBlock
+parseCipher ct = do
+  pems <- pemParseBS ct
+  content <- left show $ decodeBase64 $ pemContent (head pems)
+  let (v1line, rest) = BS.break (== 0x0a) content
+  (header, rest2) <- parseHeader (Header [] "") (BS.drop 1 rest)
+  let (nonce, body) = BS.splitAt 12 rest2
+  pure $ Cipher header nonce body
+
+parseHeader :: Header ->  ByteString -> Either String (Header, ByteString)
+parseHeader (Header stz mac) content = do
+  let (recipients, rest1) = BS.break isLF $ content
+  case BS.take 3 recipients of
+    "---" -> Right $ (Header stz (BS.drop 4 recipients), BS.drop 1 rest1)
+    "-> " -> do
+      let (fileKey, rest2) = BS.break isLF $ BS.drop 1 rest1
+      let (stztype, rest11) = BS.break isSpace recipients
+      let (stzarg, rest12) = BS.break isSpace $ BS.drop 1 rest11
+      let (stzbody, rest13) = BS.break isLF $ BS.drop 1 rest12
+      let st = Stanza {stzType = stztype, stzArgs = [stzarg], stzBody = stzbody}
+      parseHeader (Header (st:stz) mac) (BS.drop 1 rest13)
+    _ -> Left "invalid header stanza format"
+  where
+    isLF = (== 0x0a)
+    isSpace = (== 0x20)
+
+findFileKey :: [X25519Identity] -> Header -> Maybe ByteString
+findFileKey identities (Header stz mac) = join $ find isJust $ hasKey <$> identities <*> stz
+  where
+    hasKey :: X25519Identity -> Stanza -> Maybe ByteString
+    hasKey (X25519Identity pk sec) stz = maybeCryptoError $ do
+      let theirPkBs = fromRight "" $ decodeBase64Unpadded $ head (stzArgs stz)
+      theirPk <- X25519.publicKey theirPkBs
+      let shareKey = X25519.dh theirPk sec
+      let salt = (convert theirPk) <> (convert pk)
+      let wrappingKey = hkdf "age-encryption.org/v1/X25519" (convert shareKey) salt
+      nonce <- CC.nonce12 (BS.pack $ take 12 $ repeat 0)
+      st0 <- CC.initialize wrappingKey nonce
+      let (e, st1) = CC.decrypt (stzBody stz) st0
+      return e
+
 
 generateX25519Identity :: IO X25519Identity
 generateX25519Identity = do
@@ -121,11 +196,8 @@ mkHeader fileKey recipients =
       stanza = BS.concat (marshalStanza <$> recipients)
   in  headerNoMac <> " " <>  (encodeBase64Unpadded' mac) <> "\n"
 
-
 hkdf :: ByteString -> ByteString -> ByteString -> ByteString
 hkdf info key salt = HKDF.expand (HKDF.extract  salt key ::PRK SHA256) info 32
-
-b64enc bs = convertToBase Base64 (convert bs :: ByteString) :: ByteString
 
 incNonce :: ByteString -> ByteString
 incNonce n = BS.pack . snd $ foldr inc1 (True, []) (BS.unpack n)
