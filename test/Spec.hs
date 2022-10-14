@@ -18,8 +18,8 @@ main = do
   TIO.writeFile "./Type.dhall" (pretty Lib.secretType)
   case alg of
     Just "KMS" ->  runTestTTAndExit (test testKms)
-    Just "ALL" -> runTestTTAndExit (test [testKms, testSymm])
-    _          -> runTestTTAndExit (test [testGenIdentity])
+    Just "ALL" -> runTestTTAndExit (test [testKms, testSymm, testAgeEncryption])
+    _          -> runTestTTAndExit (test [testAgeEncryption])
 
 snapshot src expect = do
   expr <- TIO.readFile src >>= inputExpr

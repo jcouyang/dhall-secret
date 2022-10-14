@@ -11,10 +11,13 @@ import qualified Data.Text.Encoding           as TE
 import qualified Data.Text.IO                 as TIO
 import           Dhall.Secret.Age
 import           Test.HUnit
-testGenIdentity = TestCase $ do
+
+testAgeEncryption = TestCase $ do
   i <- generateX25519Identity
   TIO.writeFile "./test.key" (T.pack $ show i)
   let r = toRecipient i
-  plaintext <- TIO.readFile "./test.org"
-  encrypted <- encrypt [r] (TE.encodeUtf8 plaintext)
-  TIO.writeFile "./test.age" (TE.decodeUtf8 encrypted)
+  plaintext <- BS.readFile "./README.md"
+  encrypted <- encrypt [r] plaintext
+  BS.writeFile "./test.age" encrypted
+  decrypted <- decrypt encrypted [i]
+  assertEqual "age encryption" plaintext decrypted
