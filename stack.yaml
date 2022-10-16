@@ -20,8 +20,7 @@
 resolver: lts-18.23
 
 nix:
-  enable: true
-  shell-file: shell.nix
+  enable: false
 # User packages to be built.
 # Various formats can be used as shown in the example below.
 #
