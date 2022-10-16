@@ -31,7 +31,7 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - run: nix-env -iA hix -f https://github.com/input-output-hk/haskell.nix/tarball/0.0.58
     - name: Test
-      run: hix flake check
+      run: hix flake check --allow-import-from-derivation
     - name: Static Binary
       run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v2
