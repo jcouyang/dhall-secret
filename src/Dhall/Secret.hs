@@ -127,8 +127,23 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
                       ("Context", ec)
                     ])
         _ -> error (show eResp)
-    -- _ -> error "AwsKmsDecrypted wrong"
-    _ -> error "Symmetric decrypt wrong"
+    _ -> error "something wrong decrypting aws kms"
+  | u == secretType && t == "AgeEncrypted" = case
+      ( DM.lookup "Recipients" m,
+        DM.lookup "CiphertextBlob" m) of
+        (Just (RecordField _ (ListLit _ pks) _ _),
+         Just (RecordField _ (TextLit (Chunks _ plaintext)) _ _)) -> do
+          keys <- T.splitOn "\n" . T.pack <$> getEnv "DHALL_SECRET_AGE_KEYS"
+          decodedKeys <- traverse Age.parseIdentity keys
+          decrypted <- Age.decrypt (T.encodeUtf8 plaintext) decodedKeys
+          pure $ App
+              (Field varName (makeFieldSelection "AgeDecrypted"))
+              ( RecordLit $
+                  DM.fromList
+                    [ ("Recipients", makeRecordField (ListLit Nothing pks)),
+                      ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))
+                    ])
+        _ -> error "Internal Error when decrypting Age"
   | u == secretType = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
 decrypt opts expr = subExpressions (decrypt opts) expr
 

@@ -10,7 +10,9 @@ import           Crypto.Cipher.ChaChaPoly1305 as CC (decrypt, encrypt, finalize,
                                                      finalizeAAD, initialize,
                                                      nonce12)
 import           Crypto.Cipher.Types          (Cipher (cipherInit))
-import           Crypto.Error                 (CryptoError, eitherCryptoError,
+import           Crypto.Error                 (CryptoError (..),
+                                               CryptoFailable (..),
+                                               eitherCryptoError,
                                                maybeCryptoError,
                                                throwCryptoError,
                                                throwCryptoErrorIO)
@@ -135,7 +137,7 @@ findFileKey identities (Header stz mac) = hasKey <$> identities <*> stz
       let (e, tag) = BS.splitAt (BS.length fileKey - 16) fileKey
       let (d, st1) = CC.decrypt e st0
       let dtag = CC.finalize st1
-      if (convert dtag) == tag then pure d else error ("got dtag:"<>show (convert dtag :: ByteString) <>"\nexpect:" <> (show tag))
+      if (convert dtag) == tag then pure d else CryptoFailed CryptoError_AuthenticationTagSizeInvalid
 
 
 generateX25519Identity :: IO X25519Identity
@@ -163,6 +165,10 @@ toRecipient (X25519Identity pub _) = X25519Recipient pub
 parseRecipient :: Text -> IO X25519Recipient
 parseRecipient r = X25519Recipient <$> throwCryptoErrorIO (X25519.publicKey $ b32dec r)
 
+parseIdentity :: Text -> IO X25519Identity
+parseIdentity i = throwCryptoErrorIO $ do
+  key <- X25519.secretKey (b32dec i)
+  pure $ X25519Identity (X25519.toPublic key) key
 
 b32 :: (ByteArrayAccess b) => Text -> b -> Text
 b32 header b = case Bech32.humanReadablePartFromText header of

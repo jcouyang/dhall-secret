@@ -20,7 +20,7 @@
 resolver: lts-18.23
 
 nix:
-  enable: false
+  enable: true
 # User packages to be built.
 # Various formats can be used as shown in the example below.
 #

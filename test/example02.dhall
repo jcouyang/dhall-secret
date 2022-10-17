@@ -4,7 +4,8 @@ in  { foo =
       { ageSecret =
           T.AgeDecrypted
             { Recipients =
-              [ "age125mzp30ssxpeudr9nfcyp4paytxp34950vc828a5grf48lgdrucqx8mar3"
+              [ "age1rl8j26etwulmav6yn8p4huu6944n7hsr2pyu2dr0evjzsj2tq92q48arjp"
+              , "age1xmcwr5gpzkaxdwz2udww7lht2j4evp4vpl0ujeu64pe5ncpsk9zqhkfw5y"
               ]
             , PlainText = "hello age!"
             }
