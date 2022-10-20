@@ -3,7 +3,7 @@ module Dhall.Secret.Age where
 import qualified Codec.Binary.Bech32          as Bech32
 import           Control.Arrow                (Arrow (first),
                                                ArrowChoice (left))
-import           Control.Exception            (Exception, throw, throwIO)
+import           Control.Exception            (Exception, throw)
 import           Control.Monad                (join)
 import           Control.Monad.IO.Class       (MonadIO (liftIO))
 import           Crypto.Cipher.ChaChaPoly1305 as CC (decrypt, encrypt, finalize,
@@ -77,8 +77,12 @@ decrypt ciphertext identities = do
   let Header stz mac = header
   let possibleKeys = findFileKey identities header
   case find isRight $ possibleKeys of
-    Just (Right key) -> decryptChunks (payloadKey nonce key) zeroNonce body
-    _                -> throwIO (userError "No file key found")
+    Just (Right key) -> do
+      let (headerNoMac, macGot) = mkHeaderMac key stz
+      if macGot == mac then
+        decryptChunks (payloadKey nonce key) zeroNonce body
+      else error "Header MAC not match"
+    _                -> error "No file key found"
 
 decryptChunks :: ByteString -> ByteString -> ByteString -> IO ByteString
 decryptChunks key nonce body = case BS.splitAt (64 * 1024) body of
@@ -93,7 +97,7 @@ decryptChunk key nonce cipherblob isFinal = do
     let (msg, tag) = BS.splitAt (BS.length cipherblob - 16) cipherblob
     let (d, st2) = CC.decrypt msg st1
     let authtag = CC.finalize st2
-    if (convert authtag) == tag then pure d else error "invalid auth tag"
+    if (convert authtag) == tag then pure d else error "Invalid auth tag"
 
 parseCipher :: ByteString -> Either String CipherBlock
 parseCipher ct = do
@@ -107,14 +111,14 @@ parseHeader :: Header ->  ByteString -> Either String (Header, ByteString)
 parseHeader (Header stz mac) content = do
   case BS.take 3 content of
     "---" ->
-      let (recipients, body) = BS.break isLF $ content in
-        Right $ (Header stz (BS.drop 4 recipients), BS.drop 1 body)
+      let (mac, body) = BS.break isLF $ content in
+        Right $ (Header stz (decodeBase64Lenient $ BS.drop 4 mac), BS.drop 1 body)
     "-> " ->
       let (recipients, rest1) = BS.break isLF $ BS.drop 3 content
           (fileKey, rest2) = BS.break isLF $ BS.drop 1 rest1
           (stztype, rest11) = BS.break isSpace recipients
           stzarg = BS.drop 1 rest11
-          st = Stanza {stzType = stztype, stzArgs = [stzarg], stzBody = fileKey} in
+          st = Stanza {stzType = stztype, stzArgs = [stzarg], stzBody = decodeBase64Lenient fileKey} in
       parseHeader (Header (st:stz) mac) (BS.drop 1 rest2)
     _ -> Left "invalid headers"
   where
@@ -133,7 +137,7 @@ findFileKey identities (Header stz mac) = hasKey <$> identities <*> stz
       let wrappingKey = hkdf "age-encryption.org/v1/X25519" (convert shareKey) salt
       nonce <- CC.nonce12 (BS.pack $ take 12 $ repeat 0)
       st0 <- CC.initialize wrappingKey nonce
-      let fileKey = BS.decodeBase64Lenient $ stzBody stz
+      let fileKey = stzBody stz
       let (e, tag) = BS.splitAt (BS.length fileKey - 16) fileKey
       let (d, st1) = CC.decrypt e st0
       let dtag = CC.finalize st1
@@ -207,13 +211,17 @@ marshalStanza stanza =
 
 mkHeader :: ByteString -> [Stanza] -> ByteString
 mkHeader fileKey recipients =
+  let (headerNoMac, mac) = mkHeaderMac fileKey recipients
+  in  headerNoMac <> " " <>  (encodeBase64Unpadded' mac) <> "\n"
+
+mkHeaderMac fileKey recipients =
   let intro = "age-encryption.org/v1\n" :: ByteString
       macKey = hkdf "header" fileKey ""
       footer = "---" :: ByteString
+      stanza = BS.concat (marshalStanza <$> recipients)
       headerNoMac = intro <>  stanza <> footer
       mac = convert (hmac macKey headerNoMac :: HMAC SHA256) :: ByteString
-      stanza = BS.concat (marshalStanza <$> recipients)
-  in  headerNoMac <> " " <>  (encodeBase64Unpadded' mac) <> "\n"
+  in (headerNoMac, mac)
 
 hkdf :: ByteString -> ByteString -> ByteString -> ByteString
 hkdf info key salt = HKDF.expand (HKDF.extract  salt key ::PRK SHA256) info 32

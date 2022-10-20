@@ -19,7 +19,7 @@ main = do
   case alg of
     Just "KMS" ->  runTestTTAndExit (test testKms)
     Just "ALL" -> runTestTTAndExit (test [testKms, testAge])
-    _          -> runTestTTAndExit (test [testAgeEncryption, testAge])
+    _          -> runTestTTAndExit (test [testAgeEncryption])
 
 snapshot src expect = do
   expr <- TIO.readFile src >>= inputExpr
