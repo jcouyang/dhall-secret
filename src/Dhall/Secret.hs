@@ -136,7 +136,9 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
           keys <- T.splitOn "\n" . T.pack <$> getEnv "DHALL_SECRET_AGE_KEYS"
           decodedKeys <- traverse Age.parseIdentity keys
           decrypted <- Age.decrypt (T.encodeUtf8 plaintext) decodedKeys
-          pure $ App
+          pure $ if dp'notypes opts then
+            TextLit (Chunks [] (T.decodeUtf8 decrypted))
+           else App
               (Field varName (makeFieldSelection "AgeDecrypted"))
               ( RecordLit $
                   DM.fromList
