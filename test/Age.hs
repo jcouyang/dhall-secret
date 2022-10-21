@@ -14,10 +14,11 @@ import           Test.HUnit
 
 testAgeEncryption = TestCase $ do
   i <- generateX25519Identity
-  TIO.writeFile "./test.key" (T.pack $ show i)
+  i2 <- generateX25519Identity
   let r = toRecipient i
+  let r2 = toRecipient i2
   plaintext <- BS.readFile "./README.md"
-  encrypted <- encrypt [r] plaintext
-  BS.writeFile "./test.age" encrypted
+  encrypted <- encrypt [r, r2] plaintext
+  print encrypted
   decrypted <- decrypt encrypted [i]
   assertEqual "age encryption" plaintext decrypted
