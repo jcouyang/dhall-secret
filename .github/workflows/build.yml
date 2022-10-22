@@ -13,7 +13,7 @@ jobs:
           - runner: "macos-latest"
             build-script: "nix-build -A dhall-secret.components.exes.dhall-secret"
           - runner: "ubuntu-latest"
-            build-script: "nix-build -A projectCross.musl.hsPkgs.dhall-secret.components.exes.dhall-secret"
+            build-script: "nix-build -A projectCross.musl64.hsPkgs.dhall-secret.components.exes.dhall-secret"
     name: build on ${{ matrix.os.runner }}
     runs-on: ${{ matrix.os.runner }}
     if: "!contains(github.event.head_commit.message, 'ci skip')"
