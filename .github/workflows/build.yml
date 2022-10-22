@@ -11,9 +11,9 @@ jobs:
       matrix:
         os:
           - runner: "macos-latest"
-            build-script: "hix build .#dhall-secret:exe:dhall-secret"
+            build-script: "nix-build -A dhall-secret.components.exes.dhall-secret"
           - runner: "ubuntu-latest"
-            build-script: "hix build .#x86_64-unknown-linux-musl:dhall-secret:exe:dhall-secret"
+            build-script: "nix-build -A projectCross.musl.hsPkgs.dhall-secret.components.exes.dhall-secret"
     name: build on ${{ matrix.os.runner }}
     runs-on: ${{ matrix.os.runner }}
     if: "!contains(github.event.head_commit.message, 'ci skip')"
@@ -29,9 +29,8 @@ jobs:
       with:
         name: jcouyang
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix-env -iA hix -f https://github.com/input-output-hk/haskell.nix/tarball/0.0.58
     - name: Test
-      run: hix run .#dhall-secret:test:dhall-secret-test
+      run: nix-build -A dhall-secret.components.tests
     - name: Static Binary
       run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v2
@@ -70,5 +69,5 @@ jobs:
         echo -e "oyanglulu\n${HACKAGE_PASS}\nn\n" | stack upload . --candidate
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
-        mv macos-10.15-binary/dhall-secret dhall-secret-x86_64-macOS
+        mv macos-latest-binary/dhall-secret dhall-secret-x86_64-macOS
         gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS

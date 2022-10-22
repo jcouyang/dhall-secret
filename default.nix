@@ -1,7 +1,7 @@
 let
   # Read in the Niv sources
   sources = {
-    haskellNix = builtins.fetchTarball "https://github.com/input-output-hk/haskell.nix/archive/master.tar.gz";
+    haskellNix = builtins.fetchTarball "https://github.com/input-output-hk/haskell.nix/archive/refs/tags/0.0.58.tar.gz";
   };
 
   # If ./nix/sources.nix file is not found run:
@@ -18,7 +18,7 @@ let
     # haskell.nix provides access to the nixpkgs pins which are used by our CI,
     # hence you will be more likely to get cache hits when using these.
     # But you can also just use your own, e.g. '<nixpkgs>'.
-    haskellNix.sources.nixpkgs-unstable
+    haskellNix.sources.nixpkgs-2205
     # These arguments passed to nixpkgs, include some patches and also
     # the haskell.nix functionality itself as an overlay.
     haskellNix.nixpkgsArgs;
