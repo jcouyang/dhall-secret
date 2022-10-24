@@ -4,4 +4,5 @@
     # hlint = "latest";
     haskell-language-server = "latest";
   };
+  withHoogle = false;
 }

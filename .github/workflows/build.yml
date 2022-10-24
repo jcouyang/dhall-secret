@@ -12,6 +12,8 @@ jobs:
         os:
           - runner: "macos-latest"
             build-script: "nix-build -A dhall-secret.components.exes.dhall-secret"
+          - runner: "macos-12"
+            build-script: "nix-build -A projectCross.aarch64-darwin.hsPkgs.dhall-secret.components.exes.dhall-secret"
           - runner: "ubuntu-latest"
             build-script: "nix-build -A projectCross.musl64.hsPkgs.dhall-secret.components.exes.dhall-secret"
     name: build on ${{ matrix.os.runner }}
@@ -70,4 +72,5 @@ jobs:
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
         mv macos-latest-binary/dhall-secret dhall-secret-x86_64-macOS
-        gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
+        mv macos-12-binary/dhall-secret dhall-secret-aarch64-macOS
+        gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS ./dhall-secret-aarch64-macOS
