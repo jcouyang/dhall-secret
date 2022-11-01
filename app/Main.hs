@@ -6,7 +6,7 @@ import qualified Data.Text           as T
 import qualified Data.Text.IO        as TIO
 import           Data.Void           (Void)
 import           Dhall               (inputExpr)
-import           Dhall.Core          (Expr, pretty)
+import           Dhall.Core          (pretty)
 import           Dhall.Secret
 import           Dhall.Src
 import           Dhall.TH
@@ -27,9 +27,6 @@ data DecryptOpts = DecryptOpts
 data GenTypesOpts = GenTypesOpts { gt'output :: Maybe String }
 
 data Command = Encrypt EncryptOpts | Decrypt DecryptOpts | GenTypes GenTypesOpts
-
-version :: Expr Src Void
-version = [dhall|./version.dhall|]
 
 versionOpt = infoOption (T.unpack $ pretty version ) (long "version" <> short 'v' <> help "print version")
 

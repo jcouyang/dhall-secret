@@ -15,7 +15,7 @@ main :: IO ()
 main = do
   alg <- getEnv "TEST_ALG"
   setEnv "DHALL_SECRET_AGE_KEYS" "AGE-SECRET-KEY-1SR4ZPP77HDEUJJ9MXJPFQFKHNJ57XKUHXW7TFZ6R3AV59M3KHP2S45ZFW9\nAGE-SECRET-KEY-1HKC2ZRPFFY66049G5EWYLT2PMYKTPN6UW6RFEEEN3JEEWTFFFDNQ2QTC8M\nAGE-SECRET-KEY-1GLAZ75TDSSR647WXD0MH3RUU8XGRK6R5SD8UGQ6C6R9MCYR03ULQSUC7D6"
-  TIO.writeFile "./Type.dhall" (pretty Lib.secretType)
+  TIO.writeFile "./src/Type.dhall" (pretty Lib.secretType)
   case alg of
     Just "KMS" ->  runTestTTAndExit (test testKms)
     Just "ALL" -> runTestTTAndExit (test [testKms, testAgeEncryption, testAge])

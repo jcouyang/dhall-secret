@@ -3,6 +3,7 @@ module Dhall.Secret
     decrypt,
     secretType,
     defineVar,
+    version,
     DecryptPreference(..),
   )
 where
@@ -36,13 +37,10 @@ import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
 import           System.Environment      (getEnv)
 
 version :: Expr Src Void
-version = [dhall|./version.dhall|]
+version = [dhall|./src/version.dhall|]
 
 secretType :: Expr Src Void
-secretType = [dhall|./Type.dhall|]
-
-symmetricType :: Expr Src Void
-symmetricType = [dhall|./SymmetricType.dhall|]
+secretType = [dhall|./src/Type.dhall|]
 
 varName = Var "dhall-secret"
 
