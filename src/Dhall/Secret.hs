@@ -7,36 +7,23 @@ module Dhall.Secret
   )
 where
 
-import           Control.Exception       (throw)
 import           Control.Lens
-import           Crypto.Cipher.AES       (AES256)
-import           Crypto.Cipher.AESGCMSIV (nonce)
-import           Crypto.Cipher.Types     (AuthTag (AuthTag, unAuthTag))
-import           Crypto.Error            (throwCryptoErrorIO)
-import           Crypto.MAC.Poly1305     (Auth (Auth))
-import           Data.ByteArray          (ByteArray, ByteArrayAccess, convert)
+import           Data.ByteArray          (ByteArrayAccess)
 import           Data.ByteArray.Encoding (Base (Base64), convertFromBase,
                                           convertToBase)
-import           Data.ByteString         (ByteString)
 import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
-import qualified Data.Text.IO            as TIO
-import qualified Data.Text.Lazy.Encoding as Bytes
-import           Data.Void               (Void, vacuous)
-import           Dhall                   (Seq, inputExpr, rawInput)
+import           Data.Void               (Void)
 import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           FieldSelection (FieldSelection),
                                           RecordField (RecordField),
                                           makeBinding, makeFieldSelection,
-                                          makeRecordField, normalize,
-                                          subExpressions)
+                                          makeRecordField, subExpressions)
 import qualified Dhall.Map               as DM
-import qualified Dhall.Secret.Aes        as Aes
 import qualified Dhall.Secret.Age        as Age
 import           Dhall.Secret.Aws        (awsRun)
-import qualified Dhall.Secret.Chacha     as Chacha
 import           Dhall.Src               (Src)
 import           Dhall.TH                (dhall)
 import           GHC.Exts                (toList)
@@ -58,6 +45,7 @@ symmetricType :: Expr Src Void
 symmetricType = [dhall|./SymmetricType.dhall|]
 
 varName = Var "dhall-secret"
+
 defineVar :: Expr Src Void -> Expr Src Void
 defineVar = Let (makeBinding "dhall-secret" secretType)
 
@@ -154,9 +142,6 @@ dhallMapToHashMap (RecordLit m) = case (DM.lookup "mapKey" m, DM.lookup "mapValu
   (Just (RecordField _ (TextLit (Chunks _ k)) _ _), Just (RecordField _ (TextLit (Chunks _ v)) _ _)) -> HashMap.singleton k v
   _ -> mempty
 dhallMapToHashMap _ = mempty
-
-b64StringToByteString :: T.Text -> Either String ByteString
-b64StringToByteString = convertFromBase Base64 . T.encodeUtf8
 
 byteStringToB64 :: (ByteArrayAccess baa) => baa -> T.Text
 byteStringToB64 = T.decodeUtf8 . convertToBase Base64
