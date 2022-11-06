@@ -1,6 +1,5 @@
 module Main where
 import           Age
-import           Data.Text
 import qualified Data.Text.IO             as TIO
 import           Dhall
 import           Dhall.Core               (pretty)

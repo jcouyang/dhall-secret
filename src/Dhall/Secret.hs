@@ -17,10 +17,16 @@ import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
 import qualified Data.Version            as V
-import           Data.Void               (Void)
-import           Dhall.Core              (Chunks (Chunks), Expr (..),
+import           Data.Void               (Void, vacuous)
+import           Dhall.Core              (Chunks (Chunks),
+                                          Directory (Directory), Expr (..),
                                           FieldSelection (FieldSelection),
+                                          File (File), Import (Import),
+                                          ImportHashed (ImportHashed),
+                                          ImportMode (Code),
+                                          ImportType (Remote),
                                           RecordField (RecordField),
+                                          Scheme (HTTPS), URL (URL),
                                           makeBinding, makeFieldSelection,
                                           makeRecordField, subExpressions)
 import qualified Dhall.Map               as DM
@@ -46,9 +52,10 @@ secretType = [dhall|./src/Type.dhall|]
 
 varName = Var "dhall-secret"
 
-defineVar :: Expr Src Void -> Expr Src Void
-defineVar = Let (makeBinding "dhall-secret" secretType)
-
+defineVar :: Expr Src Void -> Expr Src Import
+defineVar = Let (makeBinding "dhall-secret" (Embed (Import (ImportHashed Nothing (Remote (URL HTTPS "raw.githubusercontent.com" (File (Directory $ reverse ["jcouyang", "dhall-secret", tag]) "Type.dhall") Nothing Nothing))) Code))) . vacuous
+  where
+    tag = if version == "0.1.0.0" then "master" else "v" <> T.pack version
 data DecryptPreference = DecryptPreference
   { dp'notypes :: Bool
   }

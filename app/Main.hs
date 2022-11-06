@@ -1,12 +1,13 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE QuasiQuotes    #-}
+{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 module Main where
 
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as TIO
 import           Data.Void           (Void)
 import           Dhall               (inputExpr)
-import           Dhall.Core          (pretty)
+import           Dhall.Core          (freeIn, normalize, pretty)
 import           Dhall.Secret
 import           Dhall.Src
 import           Dhall.TH
@@ -89,5 +90,9 @@ exec (GenTypes GenTypesOpts {gt'output}) = do
 ioDhallExpr input output inplace op = do
   text <- maybe TIO.getContents TIO.readFile input
   expr <- inputExpr text
-  procssed <- pretty . defineVar <$> op expr
+  procssed <- addDef <$> op expr
   maybe (TIO.putStrLn procssed) (`TIO.writeFile` procssed) (output <|> (if  inplace then input else Nothing))
+  where
+    addDef x
+      | freeIn "dhall-secret" x = pretty $ defineVar x
+      | otherwise  = pretty $ normalize x
