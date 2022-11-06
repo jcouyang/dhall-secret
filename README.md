@@ -29,9 +29,6 @@ gen-types                generate types
 ## Example
 create a unencrypted version of Dhall file `./test/example.dhall`, put the plain text secret in `PlainText`
 ```dhall
-let dhall-secret =
-      https://oyanglul.us/dhall-secret/Type.dhall
-
 let empty =
       https://prelude.dhall-lang.org/Map/empty
 
@@ -123,7 +120,7 @@ dhall-secret encrypt -f test/example.dhall -o test/example.encrypted.dhall
 #### update a encrypted file
 you can update a encrypted file with dhall expr without needing to decrypt the file
 ```
-dhall-secret encrypt <<< './test/example02.dhall with plain = (https://oyanglul.us/dhall-secret/Type.dhall).AgeDecrypted {PlainText = "not plain any more", Recipients = ["age1xmcwr5gpzkaxdwz2udww7lht2j4evp4vpl0ujeu64pe5ncpsk9zqhkfw5y"]}'
+dhall-secret encrypt <<< './test/example02.dhall with plain = dhall.AgeDecrypted {PlainText = "not plain any more", Recipients = ["age1xmcwr5gpzkaxdwz2udww7lht2j4evp4vpl0ujeu64pe5ncpsk9zqhkfw5y"]}'
 ```
 
 ### Decrypt

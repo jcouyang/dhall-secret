@@ -73,6 +73,7 @@ jobs:
         env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
         cabal sdist -o .
         cabal upload -u oyanglulu -p "$HACKAGE_PASS" ./dhall-secret-$VERSION.tar.gz
+        cabal upload -d -u oyanglulu -p "$HACKAGE_PASS"
     - name: package docker
       run: |
         VERSION=$(dhall text < ./version.dhall)
