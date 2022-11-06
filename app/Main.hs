@@ -6,11 +6,14 @@ module Main where
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as TIO
 import           Data.Void           (Void)
-import           Dhall               (inputExpr)
-import           Dhall.Core          (freeIn, normalize, pretty)
+import           Dhall               (EvaluateSettings (..), InputSettings (..),
+                                      inputExpr, inputExprWithSettings)
+import           Dhall.Core          (pretty)
+import           Dhall.Import        (load)
 import           Dhall.Secret
+import           Dhall.Secret.IO     (parseExpr, prettyExpr, version)
+import           Dhall.Secret.Type   (secretTypes)
 import           Dhall.Src
-import           Dhall.TH
 import           Options.Applicative
 data EncryptOpts = EncryptOpts
   { eo'file    :: Maybe String
@@ -29,7 +32,7 @@ data GenTypesOpts = GenTypesOpts { gt'output :: Maybe String }
 
 data Command = Encrypt EncryptOpts | Decrypt DecryptOpts | GenTypes GenTypesOpts
 
-versionOpt = infoOption (T.unpack $ pretty version ) (long "version" <> short 'v' <> help "print version")
+versionOpt = infoOption version (long "version" <> short 'v' <> help "print version")
 
 genTypesOpt = GenTypesOpts  <$> optional (strOption
                 (long "output"
@@ -84,15 +87,11 @@ exec :: Command -> IO ()
 exec (Encrypt EncryptOpts {eo'file, eo'output, eo'inplace}) = ioDhallExpr eo'file eo'output eo'inplace encrypt
 exec (Decrypt DecryptOpts {do'file, do'output, do'inplace, do'notypes}) = ioDhallExpr do'file do'output do'inplace (decrypt (DecryptPreference do'notypes))
 exec (GenTypes GenTypesOpts {gt'output}) = do
-  let a = pretty secretType
+  let a = pretty secretTypes
   maybe (TIO.putStrLn a) (`TIO.writeFile` a) gt'output
 
 ioDhallExpr input output inplace op = do
   text <- maybe TIO.getContents TIO.readFile input
-  expr <- inputExpr text
-  procssed <- addDef <$> op expr
+  expr <- parseExpr text
+  procssed <- op expr >>= prettyExpr
   maybe (TIO.putStrLn procssed) (`TIO.writeFile` procssed) (output <|> (if  inplace then input else Nothing))
-  where
-    addDef x
-      | freeIn "dhall-secret" x = pretty $ defineVar x
-      | otherwise  = pretty $ normalize x

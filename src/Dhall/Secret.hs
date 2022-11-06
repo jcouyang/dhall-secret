@@ -1,9 +1,6 @@
 module Dhall.Secret
   ( encrypt,
     decrypt,
-    secretType,
-    defineVar,
-    version,
     DecryptPreference(..),
   )
 where
@@ -16,24 +13,17 @@ import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
-import qualified Data.Version            as V
-import           Data.Void               (Void, vacuous)
-import           Dhall.Core              (Chunks (Chunks),
-                                          Directory (Directory), Expr (..),
+import           Data.Void               (Void)
+import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           FieldSelection (FieldSelection),
-                                          File (File), Import (Import),
-                                          ImportHashed (ImportHashed),
-                                          ImportMode (Code),
-                                          ImportType (Remote),
                                           RecordField (RecordField),
-                                          Scheme (HTTPS), URL (URL),
-                                          makeBinding, makeFieldSelection,
-                                          makeRecordField, subExpressions)
+                                          makeFieldSelection, makeRecordField,
+                                          subExpressions)
 import qualified Dhall.Map               as DM
 import qualified Dhall.Secret.Age        as Age
 import           Dhall.Secret.Aws        (awsRun)
+import           Dhall.Secret.Type       (secretTypes)
 import           Dhall.Src               (Src)
-import           Dhall.TH                (dhall)
 import           GHC.Exts                (toList)
 import           Network.AWS             (send)
 import           Network.AWS.KMS         (decEncryptionContext,
@@ -41,28 +31,18 @@ import           Network.AWS.KMS         (decEncryptionContext,
 import qualified Network.AWS.KMS         as KMS
 import           Network.AWS.KMS.Decrypt (drsKeyId, drsPlaintext)
 import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
-import qualified Paths_dhall_secret      as P
 import           System.Environment      (getEnv)
 
-version :: String
-version = V.showVersion P.version
-
-secretType :: Expr Src Void
-secretType = [dhall|./src/Type.dhall|]
-
+varName :: Expr s a
 varName = Var "dhall-secret"
 
-defineVar :: Expr Src Void -> Expr Src Import
-defineVar = Let (makeBinding "dhall-secret" (Embed (Import (ImportHashed Nothing (Remote (URL HTTPS "raw.githubusercontent.com" (File (Directory $ reverse ["jcouyang", "dhall-secret", tag]) "Type.dhall") Nothing Nothing))) Code))) . vacuous
-  where
-    tag = if version == "0.1.0.0" then "master" else "v" <> T.pack version
 data DecryptPreference = DecryptPreference
   { dp'notypes :: Bool
   }
 
 encrypt :: Expr Src Void -> IO (Expr Src Void)
 encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
-  | u == secretType && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
+  | u == secretTypes && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
     ( Just (RecordField _ (TextLit (Chunks _ kid)) _ _),
       Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
       Just ec@(RecordField _ (ListLit _ ecl) _ _)
@@ -70,7 +50,7 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
         let context = mconcat $ toList (dhallMapToHashMap <$> ecl)
         eResp <- awsRun $ send $ KMS.encrypt kid (T.encodeUtf8 pt) & eEncryptionContext .~ context
         case (eResp ^. ersKeyId, eResp ^. ersCiphertextBlob) of
-          (Just kid, Just cb) ->
+          (Just _, Just cb) ->
             pure $
               App
                 (Field varName (makeFieldSelection "AwsKmsEncrypted"))
@@ -83,7 +63,7 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
                 )
           _ -> error (show eResp)
     _ -> error "Internal Error when encrypting AwsKmsDecrypted expr"
-  | u == secretType && t == "AgeDecrypted" = case
+  | u == secretTypes && t == "AgeDecrypted" = case
       ( DM.lookup "Recipients" m,
         DM.lookup "PlainText" m) of
         (Just (RecordField _ (ListLit _ pks) _ _),
@@ -98,18 +78,18 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
                       ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 encrypted))))
                     ])
         _ -> error "Internal Error when encrypting Symmetric expr"
-  | u == secretType = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
+  | u == secretTypes = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
 encrypt expr = subExpressions encrypt expr
 
 decrypt :: DecryptPreference -> Expr Src Void -> IO (Expr Src Void)
 decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
-  | u == secretType && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
-    (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ pt)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
-      eResp <- case convertFromBase Base64 (T.encodeUtf8 pt) of
+  | u == secretTypes && t == "AwsKmsEncrypted" = case (DM.lookup "KeyId" m, DM.lookup "CiphertextBlob" m, DM.lookup "EncryptionContext" m) of
+    (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ cb)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
+      eResp <- case convertFromBase Base64 (T.encodeUtf8 cb) of
         Left e -> error (show e)
         Right a -> awsRun $ send $ KMS.decrypt a & decEncryptionContext .~ mconcat (toList (dhallMapToHashMap <$> ecl))
       case (eResp ^. drsKeyId, eResp ^. drsPlaintext) of
-        (Just kid, Just pt) ->
+        (Just _, Just pt) ->
           pure $ if dp'notypes opts then
            TextLit (Chunks [] (T.decodeUtf8 pt))
           else
@@ -123,7 +103,7 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
                     ])
         _ -> error (show eResp)
     _ -> error "something wrong decrypting aws kms"
-  | u == secretType && t == "AgeEncrypted" = case
+  | u == secretTypes && t == "AgeEncrypted" = case
       ( DM.lookup "Recipients" m,
         DM.lookup "CiphertextBlob" m) of
         (Just (RecordField _ (ListLit _ pks) _ _),
@@ -141,7 +121,7 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
                       ("PlainText", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 decrypted))))
                     ])
         _ -> error "Internal Error when decrypting Age"
-  | u == secretType = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
+  | u == secretTypes = pure $ App (Field varName (FieldSelection s t c)) (RecordLit m)
 decrypt opts expr = subExpressions (decrypt opts) expr
 
 dhallMapToHashMap :: Expr Src a -> HashMap T.Text T.Text
