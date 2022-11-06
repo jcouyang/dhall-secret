@@ -74,6 +74,12 @@ jobs:
         cabal sdist -o .
         cabal upload -u oyanglulu -p "$HACKAGE_PASS" ./dhall-secret-$VERSION.tar.gz
         cabal upload -d -u oyanglulu -p "$HACKAGE_PASS"
+    - name: Log in to the Container registry
+      uses: docker/login-action@v1.10.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     - name: package docker
       run: |
         VERSION=$(dhall text < ./version.dhall)
