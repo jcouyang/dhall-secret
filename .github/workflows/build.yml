@@ -31,6 +31,10 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Test
       run: nix-build -A dhall-secret.components.tests
+    - run: |
+        VERSION=$(dhall text < ./version.dhall)
+        echo publishing $VERSION lib...
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
     - name: Static Binary
       run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v2
@@ -44,6 +48,7 @@ jobs:
       - build
     permissions:
       contents: write
+      packages: write
     steps:
     - uses: actions/checkout@v2
     - uses: dhall-lang/setup-dhall@v4
@@ -65,9 +70,13 @@ jobs:
       run: |
         VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION lib...
-        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./package.yaml'
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
         echo -e "oyanglulu\n${HACKAGE_PASS}\nn\n" | stack upload . --candidate
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
         mv macos-latest-binary/dhall-secret dhall-secret-x86_64-macOS
         gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
+        $(nix-build docker.nix) | docker load
+        docker tag  ghcr.io/jcouyang/dhall-secret:latest ghcr.io/jcouyang/dhall-secret:$VERSION
+        docker push ghcr.io/jcouyang/dhall-secret:latest
+        docker push ghcr.io/jcouyang/dhall-secret:$VERSION

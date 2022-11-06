@@ -16,6 +16,7 @@ import           Data.HashMap.Strict     (HashMap)
 import qualified Data.HashMap.Strict     as HashMap
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
+import qualified Data.Version            as V
 import           Data.Void               (Void)
 import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           FieldSelection (FieldSelection),
@@ -34,10 +35,11 @@ import           Network.AWS.KMS         (decEncryptionContext,
 import qualified Network.AWS.KMS         as KMS
 import           Network.AWS.KMS.Decrypt (drsKeyId, drsPlaintext)
 import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
+import qualified Paths_dhall_secret      as P
 import           System.Environment      (getEnv)
 
-version :: Expr Src Void
-version = [dhall|./src/version.dhall|]
+version :: String
+version = V.showVersion P.version
 
 secretType :: Expr Src Void
 secretType = [dhall|./src/Type.dhall|]
