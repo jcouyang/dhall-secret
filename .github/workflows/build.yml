@@ -104,7 +104,8 @@ jobs:
         HACKAGE_PASS: ${{ secrets.HACKAGE_PASS }}
       run: |
         export VERSION=$(dhall text < ./version.dhall)
-        nix-shell --run 'cabal upload -u oyanglulu -p "$HACKAGE_PASS" ./tars/dhall-secret-$VERSION.tar.gz'
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
+        nix-shell --run 'cabal upload -u oyanglulu -p "$HACKAGE_PASS" ./tars/dist-newstyle/sdist/dhall-secret-$VERSION.tar.gz'
         nix-shell --run 'cabal upload -d -u oyanglulu -p "$HACKAGE_PASS"'
     - name: Log in to the Container registry
       uses: docker/login-action@v1.10.0
