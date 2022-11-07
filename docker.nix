@@ -11,7 +11,7 @@ let project = import ./default.nix;
       remove-references-to -t ${dhall-secret} $out/bin/dhall-secret
       '';
     };
-in pkgs.dockerTools.buildImage {
+in pkgs.dockerTools.buildLayeredImage {
   name = "ghcr.io/jcouyang/dhall-secret";
   tag = "latest";
   created = "now";
