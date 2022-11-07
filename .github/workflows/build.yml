@@ -31,7 +31,7 @@ jobs:
         env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
     - name: cabal tar
       run: |
-        nix-shell --run 'cabal sdist -o .'
+        nix-shell --run 'cabal sdist'
     - name: docker tar
       run: |
         dockertar=$(nix-build docker.nix)
