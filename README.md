@@ -4,11 +4,18 @@
 A simple tool to manage secrets in Dhall configuration, inspired by [sops](https://github.com/mozilla/sops)
 
 ## Install
-
-Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases), or if you have nix
-
+### nix
 ```
 nix-env -f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dhall-secret.components.exes.dhall-secret
+```
+
+### binary
+Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases)
+
+### docker
+docker images are avail [here](https://github.com/jcouyang/dhall-secret/pkgs/container/dhall-secret)
+```
+docker run ghcr.io/jcouyang/dhall-secret:latest
 ```
 
 ## Usage

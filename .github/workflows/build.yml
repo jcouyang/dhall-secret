@@ -124,6 +124,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        VERSION=$(dhall text < ./version.dhall)
         echo publishing $VERSION binary...
         mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
         mv macos-latest-binary/dhall-secret dhall-secret-x86_64-macOS
