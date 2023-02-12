@@ -1,13 +1,12 @@
 module Main where
 import           Age
 import qualified Data.Text.IO             as TIO
-import           Dhall
-import           Dhall.Core               (pretty)
 import qualified Dhall.Secret             as Lib
 import           Dhall.Secret.IO
 import           System.Environment       (setEnv)
 import           System.Environment.Blank (getEnv)
 import           Test.HUnit
+
 testKms = "encrypt decrypt with KMS" ~: snapshot "./test/example01.dhall" "./test/example01.encrypted.dhall"
 testAge = "encrypt decrypt with Age Algo" ~: snapshot "./test/example02.dhall" "./test/example02.encrypted.dhall"
 
