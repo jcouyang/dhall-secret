@@ -28,4 +28,5 @@ in pkgs.haskell-nix.project {
     name = "haskell-nix-project";
     src = ./.;
   };
+  compiler-nix-name = "ghc8107";
 }

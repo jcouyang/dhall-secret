@@ -7,6 +7,42 @@ on:
 
 jobs:
   build:
+    name: build and test
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'ci skip')"
+    steps:
+    - uses: actions/checkout@v2
+    - uses: dhall-lang/setup-dhall@v4
+    - uses: cachix/install-nix-action@v18
+      with:
+        nix_path: nixpkgs=channel:nixos-22.05
+        extra_nix_config: |
+          trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          substituters = https://cache.iog.io https://hydra.iohk.io https://cache.nixos.org/
+    - uses: cachix/cachix-action@v10
+      with:
+        name: jcouyang
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: Test
+      run: nix-shell --run 'cabal test'
+    - run: |
+        VERSION=$(dhall text < ./version.dhall)
+        echo publishing $VERSION lib...
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
+    - name: cabal tar
+      run: |
+        nix-shell --run 'cabal sdist'
+    - name: docker tar
+      run: |
+        dockertar=$(nix-build docker.nix)
+        cp $dockertar ./docker-image-dhall-secret.tar.gz
+    - uses: actions/upload-artifact@v2
+      with:
+        name: tars
+        path: |
+          ./dist-newstyle/sdist/
+          ./docker-image-dhall-secret.tar.gz
+  binary:
     strategy:
       matrix:
         os:
@@ -19,11 +55,12 @@ jobs:
           - arch: "x86_64"
             runner: "ubuntu-latest"
             build-script: "nix-build -A projectCross.musl64.hsPkgs.dhall-secret.components.exes.dhall-secret"
-    name: build on ${{ matrix.os.runner }}
+    name: binary on ${{ matrix.os.runner }}
     runs-on: ${{ matrix.os.runner }}
     if: "!contains(github.event.head_commit.message, 'ci skip')"
     steps:
     - uses: actions/checkout@v2
+    - uses: dhall-lang/setup-dhall@v4
     - uses: cachix/install-nix-action@v18
       with:
         nix_path: nixpkgs=channel:nixos-22.05
@@ -34,8 +71,10 @@ jobs:
       with:
         name: jcouyang
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - name: Test
-      run: nix-build -A dhall-secret.components.tests
+    - run: |
+        VERSION=$(dhall text < ./version.dhall)
+        echo publishing $VERSION lib...
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
     - name: Static Binary
       run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v2
@@ -47,8 +86,10 @@ jobs:
     if: "!contains(github.event.head_commit.message, 'publish skip') && (github.ref == 'refs/heads/master')"
     needs:
       - build
+      - binary
     permissions:
       contents: write
+      packages: write
     steps:
     - uses: actions/checkout@v2
     - uses: dhall-lang/setup-dhall@v4
@@ -63,15 +104,32 @@ jobs:
       with:
         name: jcouyang
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: upload to hackage
+      env:
+        HACKAGE_PASS: ${{ secrets.HACKAGE_PASS }}
+      run: |
+        export VERSION=$(dhall text < ./version.dhall)
+        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
+        nix-shell --run 'cabal upload -u oyanglulu -p "$HACKAGE_PASS" ./tars/dist-newstyle/sdist/dhall-secret-$VERSION.tar.gz'
+        nix-shell --run 'cabal upload -d -u oyanglulu -p "$HACKAGE_PASS"'
+    - name: Log in to the Container registry
+      uses: docker/login-action@v1.10.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: package docker
+      run: |
+        VERSION=$(dhall text < ./version.dhall)
+        docker load < ./tars/docker-image-dhall-secret.tar.gz
+        docker tag  ghcr.io/jcouyang/dhall-secret:latest ghcr.io/jcouyang/dhall-secret:$VERSION
+        docker push ghcr.io/jcouyang/dhall-secret:latest
+        docker push ghcr.io/jcouyang/dhall-secret:$VERSION
     - name: tag release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        HACKAGE_PASS: ${{ secrets.HACKAGE_PASS }}
       run: |
         VERSION=$(dhall text < ./version.dhall)
-        echo publishing $VERSION lib...
-        env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./package.yaml'
-        echo -e "oyanglulu\n${HACKAGE_PASS}\nn\n" | stack upload . --candidate
         echo publishing $VERSION binary...
         mv x86_64-ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
         mv x86_64-macos-latest-binary/dhall-secret dhall-secret-x86_64-darwin

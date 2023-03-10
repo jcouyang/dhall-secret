@@ -4,11 +4,18 @@
 A simple tool to manage secrets in Dhall configuration, inspired by [sops](https://github.com/mozilla/sops)
 
 ## Install
-
-Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases), or if you have nix
-
+### nix
 ```
 nix-env -f https://github.com/jcouyang/dhall-secret/archive/master.tar.gz -iA dhall-secret.components.exes.dhall-secret
+```
+
+### binary
+Download binary according to your OS from [releases channel](https://github.com/jcouyang/dhall-secret/releases)
+
+### docker
+docker images are avail [here](https://github.com/jcouyang/dhall-secret/pkgs/container/dhall-secret)
+```
+docker run ghcr.io/jcouyang/dhall-secret:latest
 ```
 
 ## Usage
@@ -29,11 +36,8 @@ gen-types                generate types
 ## Example
 create a unencrypted version of Dhall file `./test/example.dhall`, put the plain text secret in `PlainText`
 ```dhall
-let dhall-secret =
-      https://raw.githubusercontent.com/jcouyang/dhall-secret/38fc27c7da185dda1ddae67c389080154c2336fc/Type.dhall
-
 let empty =
-      https://raw.githubusercontent.com/dhall-lang/dhall-lang/v22.0.0/Prelude/Map/empty.dhall
+      https://prelude.dhall-lang.org/Map/empty
 
 in  { kmsExample =
         dhall-secret.AwsKmsDecrypted
@@ -83,32 +87,18 @@ dhall-secret decrypt -f ./test/example02.encrypted.dhall
 you don't need to have the secret key to encrypt the file.
 
 ### Encrypt
-#### from stdin
+#### from stdin to stdout
 ```
 > dhall-secret encrypt
-let dhall-secret =
-      https://github.com/jcouyang/dhall-secret/raw/38fc27c7da185dda1ddae67c389080154c2336fc/Type.dhall
-
-in  dhall-secret.AgeDecrypted
-      { Recipients =
-        [ "age1rl8j26etwulmav6yn8p4huu6944n7hsr2pyu2dr0evjzsj2tq92q48arjp" ]
-      , PlainText = "hello age!"
-      }
+dhall-secret.AgeDecrypted
+  { Recipients =
+    [ "age1rl8j26etwulmav6yn8p4huu6944n7hsr2pyu2dr0evjzsj2tq92q48arjp" ]
+    , PlainText = "hello age!"
+  }
 [Ctrl-D]
 let dhall-secret =
-      < AgeDecrypted : { PlainText : Text, Recipients : List Text }
-      | AgeEncrypted : { CiphertextBlob : Text, Recipients : List Text }
-      | AwsKmsDecrypted :
-          { EncryptionContext : List { mapKey : Text, mapValue : Text }
-          , KeyId : Text
-          , PlainText : Text
-          }
-      | AwsKmsEncrypted :
-          { CiphertextBlob : Text
-          , EncryptionContext : List { mapKey : Text, mapValue : Text }
-          , KeyId : Text
-          }
-      >
+      https://raw.githubusercontent.com/jcouyang/dhall-secret/master/Type.dhall
+        sha256:d7b55a2f433e19cf623d58c339346a604d96989f60cffdecee125a504a068dc9
 
 in  dhall-secret.AgeEncrypted
       { Recipients =
@@ -116,21 +106,17 @@ in  dhall-secret.AgeEncrypted
       , CiphertextBlob =
           ''
           -----BEGIN AGE ENCRYPTED FILE-----
-          YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBMcGt0cEY1TDIyZUszbyt3
-          KzFWUHVEY2prUnd3S0RTTzdZMlNaWFJJRkE0CnQ3SG1zWHRnVHlRY3F2dTlDdTEw
-          dE1FVElud3RqSG9HN2VlOG1xSGtrUzQKLS0tIGQvazYzc3dCMnN4V0FsRU9sZkQ0
-          UnBxVlhBYUtHNkxXR3N5S3NNR0l2WnMKThbkWEbxqbwe+2VSSk5XwtekePESIYE1
-          47+XTReJ2UEt6UPqp20XmvKk
+          YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBEUHJPRnJzV2JVL2VKTDE3
+          VFpOVFZqOHhIMlhsNCtrNjQ4ZU95cjQ1T25rCk42cFBjcVRUV3ZZYkd0dUxBakN6
+          YVNzY1k5WEtNRUJNbjI5YUs3RThlQWcKLS0tIHNObWFIZW9MR2FsekQwY0dyZ3hF
+          VmdVYzVGRDRDUWFzWTN3N3RGRWVCbG8KSwwDZ5d+O1w0U8AQB4TRdbA7V20dk2kk
+          5P1QNjxYMEyHyJKiijRyltq+
           -----END AGE ENCRYPTED FILE-----
           ''
       }
 ```
-#### to stdout
-```
-> dhall-secret encrypt -f test/example.dhall
-```
 
-#### in place
+#### encrypt file in place
 ```
 dhall-secret encrypt -f test/example.dhall --inplace
 ```
@@ -139,27 +125,11 @@ dhall-secret encrypt -f test/example.dhall --inplace
 dhall-secret encrypt -f test/example.dhall -o test/example.encrypted.dhall
 ```
 #### update a encrypted file
-```diff
-let dhall-secret = ...
-in  { foo =
-      { aes256 =
-          dhall-secret.Aes256Encrypted
-            { KeyEnvName = "MY_AES_SECRET"
-            , CiphertextBlob = "QBwc5A=="
-            , IV = "6HNitzH9f3xf27t99XZa9g=="
-            }
-      , plain = "hello world"
-      }
-    }
-+  with foo.aes256
-+       =
-+      dhall-secret.Aes256Decrypted
-+        { KeyEnvName = "MY_AES_SECRET", PlainText = "hello AES" }
+you can update a encrypted file with dhall expr without needing to decrypt the file
 ```
-then
+dhall-secret encrypt <<< './test/example02.dhall with plain = dhall.AgeDecrypted {PlainText = "not plain any more", Recipients = ["age1xmcwr5gpzkaxdwz2udww7lht2j4evp4vpl0ujeu64pe5ncpsk9zqhkfw5y"]}'
 ```
-dhall-secret encrypt -f test/example.dhall -i
-```
+
 ### Decrypt
 #### to stdout
 ```
@@ -189,7 +159,7 @@ dhall-secret decrypt -f test/example.encrypted.dhall --inplace
 dhall-secret decrypt -f test/example.encrypted.dhall -o test/example.dhall
 ```
 #### plaintext
-`--plaintext` will output dhall without types
+`--plain-text` will output dhall without types
 ```
 > dhall-secret decrypt -f ./test/example02.encrypted.dhall -p
 { foo =
