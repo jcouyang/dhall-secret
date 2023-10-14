@@ -9,7 +9,7 @@ let
   #   niv add input-output-hk/haskell.nix -n haskellNix
 
   # Fetch the haskell.nix commit we have pinned with Niv
-  haskellNix = import sources.haskellNix {};
+  haskellNix = import sources.haskellNix { };
   # If haskellNix is not found run:
   #   niv add input-output-hk/haskell.nix -n haskellNix
 
@@ -22,11 +22,18 @@ let
     # These arguments passed to nixpkgs, include some patches and also
     # the haskell.nix functionality itself as an overlay.
     haskellNix.nixpkgsArgs;
-in pkgs.haskell-nix.project {
-  # 'cleanGit' cleans a source directory based on the files known by git
-  src = pkgs.haskell-nix.haskellLib.cleanGit {
-    name = "haskell-nix-project";
-    src = ./.;
+  prj = pkgs.haskell-nix.project {
+    # 'cleanGit' cleans a source directory based on the files known by git
+    src = pkgs.haskell-nix.haskellLib.cleanGit {
+      name = "haskell-nix-project";
+      src = ./.;
+    };
+    compiler-nix-name = "ghc8107";
   };
-  compiler-nix-name = "ghc8107";
-}
+in if pkgs.stdenv.isDarwin then
+  prj //  {
+  dhall-secret.components.exes.dhall-secret = prj.dhall-secret.components.exes.dhall-secret.overrideAttrs (o: n: {configureFlags = [
+      "--ghc-option=-optl=-L${pkgs.gmp6}/lib"
+    ];});
+  }
+   else prj
