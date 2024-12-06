@@ -36,7 +36,7 @@ jobs:
       run: |
         dockertar=$(nix-build docker.nix)
         cp $dockertar ./docker-image-dhall-secret.tar.gz
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: tars
         path: |
@@ -72,7 +72,7 @@ jobs:
         env VER=$VERSION nix-shell -p gnused --run 'sed -i "s/0.1.0.0/${VER}/" ./dhall-secret.cabal'
     - name: Static Binary
       run: ${{matrix.os.build-script}}
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: ${{matrix.os.runner}}-binary
         path: ./result/bin/dhall-secret
