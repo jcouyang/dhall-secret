@@ -1,4 +1,4 @@
-let T = https://oyanglul.us/dhall-secret/Type.dhall
+let T = https://gh.1punch.dev/dhall-secret/Type.dhall
 
 in  { foo =
       { ageSecret =

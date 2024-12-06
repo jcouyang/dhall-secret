@@ -25,12 +25,11 @@ import           Dhall.Secret.Aws        (awsRun)
 import           Dhall.Secret.Type       (secretTypes)
 import           Dhall.Src               (Src)
 import           GHC.Exts                (toList)
-import           Network.AWS             (send)
-import           Network.AWS.KMS         (decEncryptionContext,
-                                          eEncryptionContext)
-import qualified Network.AWS.KMS         as KMS
-import           Network.AWS.KMS.Decrypt (drsKeyId, drsPlaintext)
-import           Network.AWS.KMS.Encrypt (ersCiphertextBlob, ersKeyId)
+import           Amazonka.KMS.Decrypt         (decrypt_encryptionContext,
+                                          )
+import qualified Amazonka.KMS         as KMS
+import           Amazonka.KMS.Decrypt (decryptResponse_keyId, decryptResponse_plaintext)
+import           Amazonka.KMS.Encrypt (encryptResponse_ciphertextBlob, encryptResponse_keyId, encrypt_encryptionContext)
 import           System.Environment      (getEnv)
 
 varName :: Expr s a
@@ -48,8 +47,8 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
       Just ec@(RecordField _ (ListLit _ ecl) _ _)
       ) -> do
         let context = mconcat $ toList (dhallMapToHashMap <$> ecl)
-        eResp <- awsRun $ send $ KMS.encrypt kid (T.encodeUtf8 pt) & eEncryptionContext .~ context
-        case (eResp ^. ersKeyId, eResp ^. ersCiphertextBlob) of
+        eResp <- awsRun $ KMS.newEncrypt kid (T.encodeUtf8 pt) & encrypt_encryptionContext ?~ context
+        case (eResp ^. encryptResponse_keyId, eResp ^. encryptResponse_ciphertextBlob) of
           (Just _, Just cb) ->
             pure $
               App
@@ -87,8 +86,8 @@ decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
     (Just (RecordField _ (TextLit (Chunks _ kid)) _ _), Just (RecordField _ (TextLit (Chunks _ cb)) _ _), Just ec@(RecordField _ (ListLit _ ecl) _ _)) -> do
       eResp <- case convertFromBase Base64 (T.encodeUtf8 cb) of
         Left e -> error (show e)
-        Right a -> awsRun $ send $ KMS.decrypt a & decEncryptionContext .~ mconcat (toList (dhallMapToHashMap <$> ecl))
-      case (eResp ^. drsKeyId, eResp ^. drsPlaintext) of
+        Right a -> awsRun $ KMS.newDecrypt a & decrypt_encryptionContext ?~ mconcat (toList (dhallMapToHashMap <$> ecl))
+      case (eResp ^. decryptResponse_keyId, eResp ^. decryptResponse_plaintext) of
         (Just _, Just pt) ->
           pure $ if dp'notypes opts then
            TextLit (Chunks [] (T.decodeUtf8 pt))

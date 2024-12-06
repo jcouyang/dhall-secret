@@ -1,7 +1,7 @@
 let
   # Read in the Niv sources
   sources = {
-    haskellNix = builtins.fetchTarball "https://github.com/input-output-hk/haskell.nix/archive/refs/tags/0.0.66.tar.gz";
+    haskellNix = builtins.fetchTarball "https://github.com/input-output-hk/haskell.nix/archive/refs/tags/2024.12.01.tar.gz";
   };
 
   # If ./nix/sources.nix file is not found run:
@@ -28,7 +28,7 @@ let
       name = "haskell-nix-project";
       src = ./.;
     };
-    compiler-nix-name = "ghc8107";
+    compiler-nix-name = "ghc96";
   };
 in if pkgs.stdenv.isDarwin then
   prj //  {

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Dhall.Secret.Age
   ( encrypt,
     decrypt,
@@ -7,7 +8,6 @@ module Dhall.Secret.Age
     toRecipient,
   )
 where
-
 import qualified Codec.Binary.Bech32          as Bech32
 import qualified Crypto.Cipher.ChaChaPoly1305 as CC
 import           Crypto.Error                 (CryptoError (..),
@@ -23,7 +23,8 @@ import           Crypto.Random                (MonadRandom (getRandomBytes))
 import           Data.ByteArray               (ByteArrayAccess, convert)
 import           Data.ByteString              (ByteString, intercalate)
 import qualified Data.ByteString              as BS
-import qualified Data.ByteString.Base64       as BS
+import qualified Data.ByteString.Char8              as BC
+import qualified Data.ByteString.Base64       as B64
 import           Data.Either                  (isRight)
 import           Data.List                    (find)
 import           Data.Maybe                   (fromMaybe)
@@ -132,13 +133,13 @@ parseHeader (Header stz mac) content = do
   case BS.take 3 content of
     "---" ->
       let (mac', body) = BS.break isLF $ content
-       in Right $ (Header (reverse stz) (BS.decodeBase64Lenient $ BS.drop 4 mac'), BS.drop 1 body)
+       in Right $ (Header (reverse stz) (B64.decodeLenient $ BS.drop 4 mac'), BS.drop 1 body)
     "-> " ->
       let (recipients, rest1) = BS.break isLF $ BS.drop 3 content
           (fileKey, rest2) = BS.break isLF $ BS.drop 1 rest1
           (stztype, rest11) = BS.break isSpace recipients
           stzarg = BS.drop 1 rest11
-          st = Stanza {stzType = stztype, stzArgs = [stzarg], stzBody = BS.decodeBase64Lenient fileKey}
+          st = Stanza {stzType = stztype, stzArgs = [stzarg], stzBody = B64.decodeLenient fileKey}
        in parseHeader (Header (st : stz) mac) (BS.drop 1 rest2)
     _ -> Left "invalid headers"
   where
@@ -150,7 +151,7 @@ findFileKey identities (Header stanza _mac) = hasKey <$> identities <*> stanza
   where
     hasKey :: X25519Identity -> Stanza -> Either CryptoError ByteString
     hasKey (X25519Identity pk sec) stz = eitherCryptoError $ do
-      let theirPkBs = BS.decodeBase64Lenient $ head (stzArgs stz)
+      let theirPkBs = B64.decodeLenient $ head (stzArgs stz)
       theirPk <- X25519.publicKey theirPkBs
       let shareKey = X25519.dh theirPk sec
       let salt = (convert theirPk) <> (convert pk)
@@ -190,12 +191,12 @@ mkStanza fileKey (X25519Recipient theirPK) = do
     st0 <- CC.initialize wrappingKey nonce
     let (e, st1) = CC.encrypt fileKey st0
     return $ e <> (convert $ CC.finalize st1)
-  pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [BS.encodeBase64Unpadded' (convert ourPK)]}
+  pure Stanza {stzType = "X25519", stzBody = body, stzArgs = [encodeBase64Unpadded (convert ourPK)]}
 
 marshalStanza :: Stanza -> ByteString
 marshalStanza stanza =
   let prefix = "-> " :: ByteString
-      body = BS.encodeBase64Unpadded' $ stzBody stanza
+      body = encodeBase64Unpadded $ stzBody stanza
       argLine = prefix <> stzType stanza <> " " <> intercalate " " (stzArgs stanza) <> "\n"
    in argLine
         <> wrap64b body
@@ -204,7 +205,7 @@ marshalStanza stanza =
 mkHeader :: ByteString -> [Stanza] -> ByteString
 mkHeader fileKey recipients =
   let (headerNoMac, mac) = mkHeaderMac fileKey recipients
-   in headerNoMac <> " " <> (BS.encodeBase64Unpadded' mac) <> "\n"
+   in headerNoMac <> " " <> (encodeBase64Unpadded mac) <> "\n"
 
 mkHeaderMac :: ByteString -> [Stanza] -> (ByteString, ByteString)
 mkHeaderMac fileKey recipients =
@@ -237,3 +238,6 @@ wrap64b bs =
 
 payloadKey :: ByteString -> ByteString -> ByteString
 payloadKey nonce filekey = HKDF.expand (HKDF.extract nonce filekey :: PRK SHA256) ("payload" :: ByteString) 32
+
+encodeBase64Unpadded :: ByteString -> ByteString
+encodeBase64Unpadded = BC.takeWhile (/= '=') . B64.encode
