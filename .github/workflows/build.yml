@@ -45,9 +45,14 @@ jobs:
     strategy:
       matrix:
         os:
-          - runner: "macos-latest"
+          - arch: "x86_64"
+            runner: "macos-latest"
             build-script: "nix-build -A dhall-secret.components.exes.dhall-secret"
-          - runner: "ubuntu-latest"
+          - arch: "aarch64"
+            runner: "macos-latest"
+            build-script: "nix-build -A projectCross.aarch64-darwin.hsPkgs.dhall-secret.components.exes.dhall-secret"
+          - arch: "x86_64"
+            runner: "ubuntu-latest"
             build-script: "nix-build -A projectCross.musl64.hsPkgs.dhall-secret.components.exes.dhall-secret"
     name: binary on ${{ matrix.os.runner }}
     runs-on: ${{ matrix.os.runner }}
@@ -72,7 +77,7 @@ jobs:
       run: ${{matrix.os.build-script}}
     - uses: actions/upload-artifact@v4
       with:
-        name: ${{matrix.os.runner}}-binary
+        name: ${{matrix.os.arch}}-${{matrix.os.runner}}-binary
         path: ./result/bin/dhall-secret
   publish:
     runs-on: ubuntu-latest
@@ -123,6 +128,7 @@ jobs:
       run: |
         VERSION=$(nix-shell -p dhall --run 'dhall text < ./version.dhall')
         echo publishing $VERSION binary...
-        mv ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
-        mv macos-latest-binary/dhall-secret dhall-secret-x86_64-macOS
-        gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-macOS
+        mv x86_64-ubuntu-latest-binary/dhall-secret dhall-secret-x86_64-linux
+        mv x86_64-macos-latest-binary/dhall-secret dhall-secret-x86_64-darwin
+        mv aarch64-macos-latest-binary/dhall-secret dhall-secret-aarch64-darwin
+        gh release create "v$VERSION" ./dhall-secret-x86_64-linux ./dhall-secret-x86_64-darwin ./dhall-secret-aarch64-darwin
