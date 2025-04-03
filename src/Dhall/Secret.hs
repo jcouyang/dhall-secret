@@ -1,5 +1,6 @@
 module Dhall.Secret
   ( encrypt,
+    encrypt',
     decrypt,
     DecryptPreference(..),
   )
@@ -18,13 +19,13 @@ import           Dhall.Core              (Chunks (Chunks), Expr (..),
                                           FieldSelection (FieldSelection),
                                           RecordField (RecordField),
                                           makeFieldSelection, makeRecordField,
-                                          subExpressions)
+                                          subExpressions, freeIn)
 import qualified Dhall.Map               as DM
 import qualified Dhall.Secret.Age        as Age
 import           Dhall.Secret.Aws        (awsRun)
 import           Dhall.Secret.Type       (secretTypes)
 import           Dhall.Src               (Src)
-import           GHC.Exts                (toList)
+import           GHC.Exts                (toList, fromList)
 import           Amazonka.KMS.Decrypt         (decrypt_encryptionContext,
                                           )
 import qualified Amazonka.KMS         as KMS
@@ -40,8 +41,11 @@ data DecryptPreference = DecryptPreference
   }
 
 encrypt :: Expr Src Void -> IO (Expr Src Void)
-encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
-  | u == secretTypes && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
+encrypt = encrypt' []
+
+encrypt' :: [T.Text] -> Expr Src Void -> IO (Expr Src Void)
+encrypt' ageRcpOverride (App (Field u (FieldSelection src t c)) (RecordLit m))
+  | (u == secretTypes || u == varName ) && t == "AwsKmsDecrypted" = case (DM.lookup "KeyId" m, DM.lookup "PlainText" m, DM.lookup "EncryptionContext" m) of
     ( Just (RecordField _ (TextLit (Chunks _ kid)) _ _),
       Just (RecordField _ (TextLit (Chunks _ pt)) _ _),
       Just ec@(RecordField _ (ListLit _ ecl) _ _)
@@ -62,23 +66,24 @@ encrypt (App (Field u (FieldSelection src t c)) (RecordLit m))
                 )
           _ -> error (show eResp)
     _ -> error "Internal Error when encrypting AwsKmsDecrypted expr"
-  | u == secretTypes && t == "AgeDecrypted" = case
+  | (u == secretTypes || u == varName ) && t == "AgeDecrypted" = case
       ( DM.lookup "Recipients" m,
         DM.lookup "PlainText" m) of
         (Just (RecordField _ (ListLit _ pks) _ _),
          Just (RecordField _ (TextLit (Chunks _ plaintext)) _ _)) -> do
-          rs <- traverse Age.parseRecipient (toList $ extractTextLit <$> pks)
+          let recipients = if null ageRcpOverride then (toList $ extractTextLit <$> pks) else ageRcpOverride
+          rs <- traverse Age.parseRecipient recipients
           encrypted <- Age.encrypt rs (T.encodeUtf8 plaintext)
           pure $ App
               (Field varName (makeFieldSelection "AgeEncrypted"))
               ( RecordLit $
                   DM.fromList
-                    [ ("Recipients", makeRecordField (ListLit Nothing pks)),
+                    [ ("Recipients", makeRecordField (ListLit Nothing (fromList $ packTextLit <$> recipients))),
                       ("CiphertextBlob", makeRecordField (TextLit (Chunks [] (T.decodeUtf8 encrypted))))
                     ])
         _ -> error "Internal Error when encrypting Symmetric expr"
-  | u == secretTypes = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
-encrypt expr = subExpressions encrypt expr
+  | (u == secretTypes || u == varName) = pure $ App (Field varName (FieldSelection src t c)) (RecordLit m)
+encrypt' agerp expr = subExpressions (encrypt' agerp) expr
 
 decrypt :: DecryptPreference -> Expr Src Void -> IO (Expr Src Void)
 decrypt opts (App (Field u (FieldSelection s t c)) (RecordLit m))
@@ -135,3 +140,7 @@ byteStringToB64 = T.decodeUtf8 . convertToBase Base64
 extractTextLit :: Expr Src Void -> T.Text
 extractTextLit (TextLit (Chunks _ t)) = t
 extractTextLit _                      = ""
+
+packTextLit :: T.Text -> Expr Src Void
+packTextLit t = (TextLit (Chunks [] t))
+
