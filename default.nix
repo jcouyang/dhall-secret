@@ -30,10 +30,8 @@ let
     };
     compiler-nix-name = "ghc96";
   };
-in if pkgs.stdenv.isDarwin then
-  prj //  {
+in {
   dhall-secret.components.exes.dhall-secret = prj.dhall-secret.components.exes.dhall-secret.overrideAttrs (o: n: {configureFlags = [
       "--ghc-option=-optl=-L${pkgs.gmp6}/lib"
     ];});
   }
-   else prj
