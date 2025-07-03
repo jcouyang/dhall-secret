@@ -33,5 +33,6 @@ let
 in prj // {
  dhall-secret.components.exes.dhall-secret = prj.dhall-secret.components.exes.dhall-secret.overrideAttrs (o: n: {configureFlags = [
       "--ghc-option=-optl=-L${pkgs.gmp6}/lib"
+      "--ghc-option=-optl=-L${pkgs.libffi}/lib"
     ];});
   }
